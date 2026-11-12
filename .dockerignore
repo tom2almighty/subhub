@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+**/dist
+data
+.env
+.env.*
+*.log
+.git
+.gitignore
+refer
+README.md
+README.en.md

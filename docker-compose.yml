@@ -1,0 +1,11 @@
+services:
+  subhub:
+    image: ghcr.io/tom2almighty/subhub:latest
+    container_name: subhub
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./apps/server/.env
+    volumes:
+      - ./data:/app/data

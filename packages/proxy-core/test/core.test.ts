@@ -1,0 +1,384 @@
+import type { Processor, ProxyNode } from '@subhub/shared';
+import { describe, expect, it } from 'vitest';
+import { parse as parseYaml } from 'yaml';
+import {
+  applyFlag,
+  applyProcessors,
+  parseClashYaml,
+  parseNodes,
+  parseUri,
+  produce,
+  produceSurgeProxy,
+} from '../src/index.js';
+
+const VLESS_REALITY =
+  'vless://11111111-2222-3333-4444-555555555555@1.2.3.4:443' +
+  '?security=reality&sni=example.com&pbk=PUBKEY&sid=abcd' +
+  '&flow=xtls-rprx-vision#HK';
+
+const VLESS_WS =
+  'vless://11111111-2222-3333-4444-555555555555@5.6.7.8:443' +
+  '?security=tls&sni=example.com&type=ws&path=%2Fws&host=cdn.example.com#WS';
+
+const SS_URI = 'ss://YWVzLTI1Ni1nY206cGFzcw==@1.2.3.4:8388#SS';
+const TROJAN_URI = 'trojan://secret@example.com:443?sni=example.com#T';
+const HY2_URI =
+  'hysteria2://secret@example.com:443?sni=example.com&insecure=1' +
+  '&obfs=salamander&obfs-password=xyz#HY';
+
+const CLASH_YAML = `
+proxies:
+  - name: HY2
+    type: hysteria2
+    server: hy.example.com
+    port: 443
+    password: pass
+    sni: hy.example.com
+    skip-cert-verify: true
+  - name: SS
+    type: ss
+    server: ss.example.com
+    port: 8388
+    cipher: aes-128-gcm
+    password: pass
+`;
+
+function processor(value: Processor): Processor {
+  return value;
+}
+
+describe('parseUri', () => {
+  it('parses VLESS REALITY with WebSocket', () => {
+    const node = parseUri(VLESS_REALITY);
+    expect(node).toMatchObject({
+      type: 'vless',
+      name: 'HK',
+      server: '1.2.3.4',
+      port: 443,
+      uuid: '11111111-2222-3333-4444-555555555555',
+      tls: true,
+      sni: 'example.com',
+      flow: 'xtls-rprx-vision',
+    });
+    expect(node['reality-opts']).toEqual({ 'public-key': 'PUBKEY', 'short-id': 'abcd' });
+  });
+
+  it('parses VLESS WebSocket', () => {
+    const node = parseUri(VLESS_WS);
+    expect(node).toMatchObject({ type: 'vless', tls: true, network: 'ws' });
+    expect(node['ws-opts']).toEqual({ path: '/ws', headers: { Host: 'cdn.example.com' } });
+  });
+
+  it('parses Shadowsocks SIP002', () => {
+    expect(parseUri(SS_URI)).toMatchObject({
+      type: 'ss',
+      name: 'SS',
+      server: '1.2.3.4',
+      port: 8388,
+      cipher: 'aes-256-gcm',
+      password: 'pass',
+    });
+  });
+
+  it('parses Trojan and Hysteria2', () => {
+    expect(parseUri(TROJAN_URI)).toMatchObject({
+      type: 'trojan',
+      password: 'secret',
+      tls: true,
+      sni: 'example.com',
+    });
+    expect(parseUri(HY2_URI)).toMatchObject({
+      type: 'hysteria2',
+      password: 'secret',
+      tls: true,
+      obfs: 'salamander',
+      'obfs-password': 'xyz',
+      'skip-cert-verify': true,
+    });
+  });
+
+  it('parses a Base64 VMess payload', () => {
+    const payload = Buffer.from(
+      JSON.stringify({
+        v: '2',
+        ps: 'VM',
+        add: 'vm.example.com',
+        port: '443',
+        id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+        aid: '0',
+        scy: 'auto',
+        net: 'ws',
+        host: 'cdn.example.com',
+        path: '/ws',
+        tls: 'tls',
+        sni: 'cdn.example.com',
+      }),
+    ).toString('base64');
+    expect(parseUri(`vmess://${payload}`)).toMatchObject({
+      type: 'vmess',
+      name: 'VM',
+      server: 'vm.example.com',
+      port: 443,
+      tls: true,
+      network: 'ws',
+    });
+  });
+});
+
+describe('parseClashYaml', () => {
+  it('normalizes Clash proxies', () => {
+    const { nodes, warnings } = parseClashYaml(CLASH_YAML);
+    expect(warnings).toEqual([]);
+    expect(nodes).toHaveLength(2);
+    expect(nodes[0]).toMatchObject({
+      name: 'HY2',
+      type: 'hysteria2',
+      server: 'hy.example.com',
+      port: 443,
+      'skip-cert-verify': true,
+    });
+    expect(nodes[1]).toMatchObject({ name: 'SS', type: 'ss', cipher: 'aes-128-gcm' });
+  });
+
+  it('keeps subscription info pseudo-nodes for the filter stage', () => {
+    const { nodes } = parseClashYaml(
+      'proxies:\n  - name: 剩余流量：10GB\n    type: ss\n    server: x\n    port: 1\n',
+    );
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]?.name).toBe('剩余流量：10GB');
+  });
+});
+
+describe('produce', () => {
+  it('emits Surge VLESS with REALITY fields', () => {
+    const line = produceSurgeProxy(parseUri(VLESS_REALITY));
+    expect(line).toContain('HK=vless,1.2.3.4,443');
+    expect(line).toContain('username=11111111-2222-3333-4444-555555555555');
+    expect(line).toContain('flow=xtls-rprx-vision');
+    expect(line).toContain('sni=example.com');
+    expect(line).toContain('reality-public-key=PUBKEY');
+    expect(line).toContain('reality-short-id=abcd');
+    expect(line).not.toContain('tls=true');
+  });
+
+  it('emits Surge VLESS WebSocket', () => {
+    const line = produceSurgeProxy(parseUri(VLESS_WS));
+    expect(line).toContain('WS=vless,5.6.7.8,443');
+    expect(line).toContain('ws=true');
+    expect(line).toContain('ws-path=/ws');
+    expect(line).toContain('ws-headers="Host:cdn.example.com"');
+    expect(line).toContain('tls=true');
+  });
+
+  it('produces Mihomo YAML', () => {
+    const { content, warnings } = produce(parseClashYaml(CLASH_YAML).nodes, 'mihomo');
+    expect(warnings).toEqual([]);
+    const yaml = parseYaml(content) as { proxies: Record<string, unknown>[] };
+    expect(yaml.proxies).toHaveLength(2);
+    expect(yaml.proxies[0]).toMatchObject({
+      name: 'HY2',
+      type: 'hysteria2',
+      server: 'hy.example.com',
+      port: 443,
+    });
+  });
+
+  it('produces sing-box outbounds', () => {
+    const { content, warnings } = produce(parseClashYaml(CLASH_YAML).nodes, 'singbox');
+    expect(warnings).toEqual([]);
+    const json = JSON.parse(content) as { outbounds: Record<string, unknown>[] };
+    expect(json.outbounds.map((item) => item.type)).toEqual(['hysteria2', 'shadowsocks', 'direct']);
+  });
+
+  it('reports per-node failures without dropping the output', () => {
+    const unsupported: ProxyNode = {
+      name: 'WG',
+      type: 'wireguard',
+      server: 'wg.example.com',
+      port: 51820,
+      'private-key': 'key',
+    };
+    const { content, warnings } = produce([unsupported], 'surge');
+    expect(content).toBe('');
+    expect(warnings[0]).toContain('WG');
+  });
+
+  it('round-trips URI output', () => {
+    const { content } = produce([parseUri(TROJAN_URI)], 'uri');
+    expect(parseUri(content)).toMatchObject({
+      type: 'trojan',
+      server: 'example.com',
+      port: 443,
+      password: 'secret',
+    });
+  });
+});
+
+describe('applyProcessors', () => {
+  const nodes: ProxyNode[] = [
+    {
+      name: '香港 01',
+      type: 'ss',
+      server: 'hk1.example.com',
+      port: 8388,
+      cipher: 'aes-128-gcm',
+      password: 'p',
+    },
+    {
+      name: '香港 02',
+      type: 'ss',
+      server: 'hk1.example.com',
+      port: 8388,
+      cipher: 'aes-128-gcm',
+      password: 'p',
+    },
+    { name: '日本 01', type: 'trojan', server: 'jp.example.com', port: 443, password: 'p' },
+    { name: '剩余流量：10GB', type: 'ss', server: 'info.example.com', port: 1, password: 'p' },
+  ];
+
+  it('filters, renames and sorts', async () => {
+    const result = await applyProcessors(
+      nodes,
+      [
+        processor({
+          id: '1',
+          type: 'useless-filter',
+          args: {},
+        }),
+        processor({
+          id: '2',
+          type: 'filter',
+          args: { field: 'name', pattern: '香港', mode: 'include', flags: 'i' },
+        }),
+        processor({
+          id: '3',
+          type: 'rename',
+          args: { field: 'name', pattern: '香港', replacement: 'HK', flags: 'g' },
+        }),
+        processor({
+          id: '4',
+          type: 'sort',
+          args: { by: 'name', order: 'desc' },
+        }),
+      ],
+      'mihomo',
+    );
+    expect(result.map((node) => node.name)).toEqual(['HK 02', 'HK 01']);
+  });
+
+  it('dedupes by server and applies type filters', async () => {
+    const deduped = await applyProcessors(
+      nodes,
+      [
+        processor({
+          id: '1',
+          type: 'useless-filter',
+          args: {},
+        }),
+        processor({
+          id: '2',
+          type: 'type-filter',
+          args: { types: ['ss'], mode: 'include' },
+        }),
+        processor({
+          id: '3',
+          type: 'dedupe',
+          args: { by: 'server' },
+        }),
+      ],
+      'mihomo',
+    );
+    expect(deduped).toHaveLength(1);
+    expect(deduped[0]?.name).toBe('香港 01');
+  });
+
+  it('adds nodes from URI content', async () => {
+    const result = await applyProcessors(
+      [nodes[2]!],
+      [
+        processor({
+          id: '1',
+          type: 'add',
+          args: { content: SS_URI, position: 'front' },
+        }),
+      ],
+      'mihomo',
+    );
+    expect(result.map((node) => node.name)).toEqual(['SS', '日本 01']);
+  });
+
+  it('runs inline scripts', async () => {
+    const result = await applyProcessors(
+      nodes,
+      [
+        processor({
+          id: '1',
+          type: 'script',
+          args: {
+            mode: 'inline',
+            content:
+              'function operator(proxies) { return proxies.map((p) => ({ ...p, name: "S-" + p.name })) }',
+            arguments: {},
+          },
+        }),
+      ],
+      'mihomo',
+    );
+    expect(result[0]?.name).toBe('S-香港 01');
+  });
+
+  it('runs inline script filters', async () => {
+    const result = await applyProcessors(
+      nodes,
+      [
+        processor({
+          id: '1',
+          type: 'script-filter',
+          args: {
+            mode: 'inline',
+            content: "function filter(proxies) { return proxies.map((p) => p.type === 'trojan') }",
+            arguments: {},
+          },
+        }),
+      ],
+      'mihomo',
+    );
+    expect(result.map((node) => node.name)).toEqual(['日本 01']);
+  });
+});
+
+describe('applyFlag', () => {
+  it('detects region keywords and prefixes flags', () => {
+    expect(applyFlag('香港 01', { position: 'prefix', twAsCn: true })).toBe('🇭🇰 香港 01');
+    expect(applyFlag('日本 02', { position: 'prefix', twAsCn: true })).toBe('🇯🇵 日本 02');
+    expect(applyFlag('US-01', { position: 'prefix', twAsCn: true })).toBe('🇺🇸 US-01');
+  });
+
+  it('maps Taiwan to CN', () => {
+    expect(applyFlag('台湾 01', { position: 'prefix', twAsCn: true })).toBe('🇨🇳 台湾 01');
+    expect(applyFlag('🇹🇼 TW-01', { position: 'replace', twAsCn: true })).toBe('🇨🇳 TW-01');
+  });
+
+  it('keeps TW when mapping is disabled', () => {
+    expect(applyFlag('🇹🇼 TW-01', { position: 'replace', twAsCn: false })).toBe('🇹🇼 TW-01');
+  });
+
+  it('leaves names without a detectable region unchanged', () => {
+    expect(applyFlag('Node 01', { position: 'prefix', twAsCn: true })).toBe('Node 01');
+  });
+});
+
+describe('parseNodes', () => {
+  it('parses a Base64 URI list', () => {
+    const encoded = Buffer.from(`${SS_URI}\n${TROJAN_URI}`).toString('base64');
+    const { nodes, warnings } = parseNodes(encoded);
+    expect(nodes.map((node) => node.type)).toEqual(['ss', 'trojan']);
+    expect(warnings).toEqual([]);
+  });
+
+  it('warns on unknown schemes', () => {
+    const { nodes, warnings } = parseNodes('unknown://foo');
+    expect(nodes).toHaveLength(0);
+    expect(warnings).toHaveLength(1);
+  });
+});

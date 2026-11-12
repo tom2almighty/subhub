@@ -1,0 +1,9 @@
+node_modules
+dist
+data
+refer
+.env
+.env.local
+*.log
+.DS_Store
+apps/web/src/routeTree.gen.ts
