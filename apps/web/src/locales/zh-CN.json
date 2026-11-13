@@ -36,7 +36,8 @@
     "expand": "展开",
     "collapse": "收起",
     "actions": "操作",
-    "columns": "列数"
+    "list": "列表",
+    "cards": "卡片"
   },
   "auth": {
     "login": "登录",

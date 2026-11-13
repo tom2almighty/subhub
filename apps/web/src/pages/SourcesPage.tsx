@@ -14,10 +14,10 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ColumnSwitcher } from '@/components/common/ColumnSwitcher';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { EmptyState } from '@/components/common/EmptyState';
 import { PageHeader } from '@/components/common/PageHeader';
+import { ViewSwitcher } from '@/components/common/ViewSwitcher';
 import { CopySubscription } from '@/components/outputs/CopySubscription';
 import { SourceFormDialog } from '@/components/sources/SourceFormDialog';
 import { Badge } from '@/components/ui/badge';
@@ -32,8 +32,117 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { api } from '@/lib/api';
 import { formatExpire, formatFlow } from '@/lib/format';
-import { columnGridClass, useColumnCount } from '@/lib/use-columns';
+import { useMediaQuery } from '@/lib/use-media-query';
+import { useViewMode } from '@/lib/use-view-mode';
 import { cn } from '@/lib/utils';
+
+function SourceBadges({ source }: { source: SourceDto }) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <Badge variant={source.kind === 'remote' ? 'secondary' : 'outline'}>
+        {source.kind === 'remote' ? t('sources.remote') : t('sources.manual')}
+      </Badge>
+      {!source.enabled ? (
+        <Badge variant="outline" className="border-dashed text-muted-foreground">
+          {t('common.disabled')}
+        </Badge>
+      ) : null}
+    </>
+  );
+}
+
+function SourceMetrics({ source, stacked }: { source: SourceDto; stacked?: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <div
+      className={cn(
+        'text-xs text-muted-foreground',
+        stacked
+          ? 'flex flex-col items-start gap-2'
+          : 'flex flex-wrap items-center gap-x-4 gap-y-1.5',
+      )}
+    >
+      <div className="flex items-center gap-1.5 font-medium text-foreground/80">
+        <Server className="size-3.5 text-muted-foreground" />
+        <span>{t('sources.nodeCount', { count: source.nodeCount })}</span>
+      </div>
+      {source.flow ? (
+        <div className="flex items-center gap-1.5">
+          <Activity className="size-3.5 text-muted-foreground" />
+          <span>
+            {t('sources.flow')}: {formatFlow(source.flow)}
+          </span>
+        </div>
+      ) : null}
+      <div className="flex items-center gap-1.5">
+        <CalendarClock className="size-3.5 text-muted-foreground" />
+        <span>
+          {t('sources.expiresAt')}: {source.flow?.expire ? formatExpire(source.flow.expire) : '∞'}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function SourceError({ source }: { source: SourceDto }) {
+  if (!source.lastError) return null;
+  return (
+    <div className="flex items-start gap-1.5 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
+      <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+      <span className="line-clamp-2 leading-relaxed">{source.lastError}</span>
+    </div>
+  );
+}
+
+function SourceActions({
+  refreshing,
+  onRefresh,
+  onEdit,
+  onDelete,
+}: {
+  refreshing: boolean;
+  onRefresh: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex shrink-0 items-center gap-0.5">
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        onClick={onRefresh}
+        disabled={refreshing}
+        title={t('sources.refreshNow')}
+        aria-label={t('sources.refreshNow')}
+      >
+        <RefreshCw className={cn('size-3.5', refreshing && 'animate-spin')} />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        title={t('common.edit')}
+        aria-label={t('common.edit')}
+        onClick={onEdit}
+      >
+        <Pencil className="size-3.5" />
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon-sm" aria-label={t('common.actions')}>
+            <MoreHorizontal className="size-3.5" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-40">
+          <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={onDelete}>
+            {t('common.delete')}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
 
 export function SourcesPage() {
   const { t } = useTranslation();
@@ -41,7 +150,9 @@ export function SourcesPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<SourceDto | undefined>();
   const [deleting, setDeleting] = useState<SourceDto | undefined>();
-  const [columns, setColumns] = useColumnCount('subhub.sources.columns');
+  const [view, setView] = useViewMode('subhub.sources.view');
+  const desktop = useMediaQuery('(min-width: 640px)');
+  const mode = desktop ? view : 'card';
 
   const sources = useQuery({ queryKey: ['sources'], queryFn: api.listSources });
   const totalNodes = sources.data?.reduce((sum, source) => sum + source.nodeCount, 0) ?? 0;
@@ -66,6 +177,22 @@ export function SourcesPage() {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  function openEditor(source?: SourceDto) {
+    setEditing(source);
+    setFormOpen(true);
+  }
+
+  function renderActions(source: SourceDto) {
+    return (
+      <SourceActions
+        refreshing={refresh.isPending && refresh.variables === source.id}
+        onRefresh={() => refresh.mutate(source.id)}
+        onEdit={() => openEditor(source)}
+        onDelete={() => setDeleting(source)}
+      />
+    );
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader
@@ -79,14 +206,8 @@ export function SourcesPage() {
         }
         action={
           <>
-            <ColumnSwitcher value={columns} onChange={setColumns} />
-            <Button
-              size="sm"
-              onClick={() => {
-                setEditing(undefined);
-                setFormOpen(true);
-              }}
-            >
+            <ViewSwitcher value={view} onChange={setView} />
+            <Button size="sm" onClick={() => openEditor()}>
               <Plus className="size-4" />
               <span>{t('sources.new')}</span>
             </Button>
@@ -95,7 +216,7 @@ export function SourcesPage() {
       />
 
       {sources.isLoading ? (
-        <div className={cn('grid gap-3', columnGridClass(columns))}>
+        <div className={mode === 'card' ? 'card-grid' : 'space-y-3'}>
           <Skeleton className="h-28 w-full rounded-xl" />
           <Skeleton className="h-28 w-full rounded-xl" />
           <Skeleton className="h-28 w-full rounded-xl" />
@@ -103,117 +224,81 @@ export function SourcesPage() {
       ) : sources.data?.length ? (
         <div
           className={cn(
-            'grid min-h-0 flex-1 content-start gap-3 overflow-y-auto pr-0.5',
-            columnGridClass(columns),
+            'min-h-0 flex-1 overflow-y-auto pr-0.5',
+            mode === 'card' ? 'card-grid' : 'space-y-3',
           )}
         >
-          {sources.data.map((source) => {
-            const isRefreshing = refresh.isPending && refresh.variables === source.id;
+          {sources.data.map((source) =>
+            mode === 'card' ? (
+              <Card
+                key={source.id}
+                className="group flex h-full flex-col p-4 transition-all hover:border-foreground/20 hover:shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <Link
+                    to={`/sources/${source.id}`}
+                    className="min-w-0 flex-1 space-y-2.5 rounded-md focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="truncate text-base font-medium text-foreground transition-colors group-hover:text-primary">
+                        {source.name}
+                      </span>
+                      <SourceBadges source={source} />
+                    </div>
+                    <SourceMetrics source={source} stacked />
+                  </Link>
+                  {renderActions(source)}
+                </div>
 
-            return (
+                {source.lastError ? (
+                  <div className="mt-3">
+                    <SourceError source={source} />
+                  </div>
+                ) : null}
+
+                <div className="mt-auto pt-4">
+                  <CopySubscription
+                    url={source.directUrl}
+                    defaultTarget={SOURCE_DEFAULT_TARGET}
+                    variant="outline"
+                    showLabel
+                    className="w-full"
+                  />
+                </div>
+              </Card>
+            ) : (
               <Card
                 key={source.id}
                 className="group relative overflow-hidden transition-all hover:border-foreground/20 hover:shadow-sm"
               >
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 gap-3">
+                <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <Link
                     to={`/sources/${source.id}`}
-                    className="flex-1 min-w-0 space-y-2.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-md"
+                    className="min-w-0 flex-1 space-y-2.5 rounded-md focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
                   >
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="truncate text-base font-medium text-foreground group-hover:text-primary transition-colors">
+                      <span className="truncate text-base font-medium text-foreground transition-colors group-hover:text-primary">
                         {source.name}
                       </span>
-                      <Badge variant={source.kind === 'remote' ? 'secondary' : 'outline'}>
-                        {source.kind === 'remote' ? t('sources.remote') : t('sources.manual')}
-                      </Badge>
-                      {!source.enabled ? (
-                        <Badge variant="outline" className="text-muted-foreground border-dashed">
-                          {t('common.disabled')}
-                        </Badge>
-                      ) : null}
+                      <SourceBadges source={source} />
                     </div>
-
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
-                      <div className="flex items-center gap-1.5 font-medium text-foreground/80">
-                        <Server className="size-3.5 text-muted-foreground" />
-                        <span>{t('sources.nodeCount', { count: source.nodeCount })}</span>
-                      </div>
-                      {source.flow ? (
-                        <div className="flex items-center gap-1.5">
-                          <Activity className="size-3.5 text-muted-foreground" />
-                          <span>
-                            {t('sources.flow')}: {formatFlow(source.flow)}
-                          </span>
-                        </div>
-                      ) : null}
-                      <div className="flex items-center gap-1.5">
-                        <CalendarClock className="size-3.5 text-muted-foreground" />
-                        <span>
-                          {t('sources.expiresAt')}:{' '}
-                          {source.flow?.expire ? formatExpire(source.flow.expire) : '∞'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {source.lastError ? (
-                      <div className="mt-2 flex items-start gap-1.5 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
-                        <AlertCircle className="size-3.5 shrink-0 mt-0.5" />
-                        <span className="line-clamp-2 leading-relaxed">{source.lastError}</span>
-                      </div>
-                    ) : null}
+                    <SourceMetrics source={source} />
+                    <SourceError source={source} />
                   </Link>
 
-                  <div className="flex items-center justify-end gap-1.5 shrink-0 pt-2 sm:pt-0 border-t border-border/40 sm:border-t-0">
+                  <div className="flex shrink-0 items-center justify-end gap-1.5 border-t border-border/40 pt-2 sm:border-t-0 sm:pt-0">
                     <CopySubscription
                       url={source.directUrl}
                       defaultTarget={SOURCE_DEFAULT_TARGET}
                       variant="outline"
                       showLabel
                     />
-
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => refresh.mutate(source.id)}
-                      disabled={isRefreshing}
-                      title={t('sources.refreshNow')}
-                      aria-label={t('sources.refreshNow')}
-                    >
-                      <RefreshCw className={cn('size-3.5', isRefreshing && 'animate-spin')} />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      title={t('common.edit')}
-                      aria-label={t('common.edit')}
-                      onClick={() => {
-                        setEditing(source);
-                        setFormOpen(true);
-                      }}
-                    >
-                      <Pencil className="size-3.5" />
-                    </Button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon-sm" aria-label={t('common.actions')}>
-                          <MoreHorizontal className="size-3.5" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-44">
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onClick={() => setDeleting(source)}
-                        >
-                          {t('common.delete')}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    {renderActions(source)}
                   </div>
                 </div>
               </Card>
-            );
-          })}
+            ),
+          )}
         </div>
       ) : (
         <Card className="flex min-h-75 flex-1 items-center justify-center p-8">
@@ -221,13 +306,7 @@ export function SourcesPage() {
             icon={Server}
             title={t('sources.empty')}
             action={
-              <Button
-                size="sm"
-                onClick={() => {
-                  setEditing(undefined);
-                  setFormOpen(true);
-                }}
-              >
+              <Button size="sm" onClick={() => openEditor()}>
                 <Plus className="size-4" />
                 {t('sources.new')}
               </Button>

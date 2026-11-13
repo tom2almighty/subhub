@@ -1,20 +1,19 @@
-import { Columns2, Columns3, Rows3 } from 'lucide-react';
+import { LayoutGrid, List } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
-import type { ColumnCount } from '@/lib/use-columns';
+import type { ViewMode } from '@/lib/use-view-mode';
 
 const OPTIONS = [
-  { value: 1 as const, icon: Rows3 },
-  { value: 2 as const, icon: Columns2 },
-  { value: 3 as const, icon: Columns3 },
-];
+  { value: 'list', icon: List, key: 'common.list' },
+  { value: 'card', icon: LayoutGrid, key: 'common.cards' },
+] as const;
 
-export function ColumnSwitcher({
+export function ViewSwitcher({
   value,
   onChange,
 }: {
-  value: ColumnCount;
-  onChange: (value: ColumnCount) => void;
+  value: ViewMode;
+  onChange: (value: ViewMode) => void;
 }) {
   const { t } = useTranslation();
 
@@ -27,7 +26,7 @@ export function ColumnSwitcher({
             key={option.value}
             variant={value === option.value ? 'secondary' : 'ghost'}
             size="icon-sm"
-            aria-label={`${t('common.columns')} ${option.value}`}
+            aria-label={t(option.key)}
             aria-pressed={value === option.value}
             onClick={() => onChange(option.value)}
           >

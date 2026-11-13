@@ -36,7 +36,8 @@
     "expand": "Expand",
     "collapse": "Collapse",
     "actions": "Actions",
-    "columns": "Columns"
+    "list": "List",
+    "cards": "Cards"
   },
   "auth": {
     "login": "Sign in",
