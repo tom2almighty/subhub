@@ -1,6 +1,23 @@
+import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { PROXY_TYPES, type Processor, type ProxyType } from '@subhub/shared';
 import type { TFunction } from 'i18next';
-import { ArrowDown, ArrowUp, ChevronDown, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, GripVertical, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
@@ -549,13 +566,18 @@ export function ProcessorEditor({
     onChange(value.map((item, i) => (i === index ? processor : item)));
   }
 
-  function move(index: number, delta: number) {
-    const target = index + delta;
-    if (target < 0 || target >= value.length) return;
-    const next = [...value];
-    const [item] = next.splice(index, 1);
-    if (item) next.splice(target, 0, item);
-    onChange(next);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = value.findIndex((item) => item.id === active.id);
+    const newIndex = value.findIndex((item) => item.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    onChange(arrayMove(value, oldIndex, newIndex));
   }
 
   function add(type: Processor['type']) {
@@ -572,89 +594,24 @@ export function ProcessorEditor({
         </div>
       ) : null}
 
-      {value.map((processor, index) => {
-        const open = openId === processor.id;
-        const summary = processorSummary(processor, t);
-        return (
-          <div
-            key={processor.id}
-            className={cn(
-              'overflow-hidden rounded-lg border bg-card transition-colors',
-              processor.disabled && 'bg-muted/30',
-            )}
-          >
-            <div className="flex items-center gap-2 py-2 pr-2 pl-3">
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted font-mono text-xs text-muted-foreground">
-                {index + 1}
-              </span>
-              <button
-                type="button"
-                aria-expanded={open}
-                onClick={() => setOpenId(open ? null : processor.id)}
-                className="flex min-w-0 flex-1 items-center gap-2 rounded-md py-1 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">
-                    {t(`processors.${processor.type}`)}
-                  </span>
-                  <span
-                    className={cn(
-                      'mt-0.5 block truncate text-xs text-muted-foreground',
-                      !summary && 'hidden',
-                    )}
-                  >
-                    {summary}
-                  </span>
-                </span>
-                <ChevronDown
-                  className={cn(
-                    'size-4 shrink-0 text-muted-foreground transition-transform',
-                    open && 'rotate-180',
-                  )}
-                />
-              </button>
-              <Switch
-                aria-label={t('common.enabled')}
-                checked={!processor.disabled}
-                onCheckedChange={(checked) => update(index, { ...processor, disabled: !checked })}
-              />
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" aria-label={t('common.actions')}>
-                    <MoreHorizontal className="size-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => move(index, -1)} disabled={index === 0}>
-                    <ArrowUp className="size-4" />
-                    {t('common.moveUp')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => move(index, 1)}
-                    disabled={index === value.length - 1}
-                  >
-                    <ArrowDown className="size-4" />
-                    {t('common.moveDown')}
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    className="text-destructive"
-                    onClick={() => onChange(value.filter((_, i) => i !== index))}
-                  >
-                    <Trash2 className="size-4" />
-                    {t('common.delete')}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-            {open ? (
-              <div className="border-t bg-muted/20 p-3">
-                <ArgsEditor processor={processor} onChange={(next) => update(index, next)} />
-              </div>
-            ) : null}
-          </div>
-        );
-      })}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext
+          items={value.map((item) => item.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          {value.map((processor, index) => (
+            <SortableProcessor
+              key={processor.id}
+              processor={processor}
+              index={index}
+              open={openId === processor.id}
+              onToggle={() => setOpenId(openId === processor.id ? null : processor.id)}
+              onChange={(next) => update(index, next)}
+              onRemove={() => onChange(value.filter((_, i) => i !== index))}
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -683,6 +640,111 @@ export function ProcessorEditor({
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
+    </div>
+  );
+}
+
+function SortableProcessor({
+  processor,
+  index,
+  open,
+  onToggle,
+  onChange,
+  onRemove,
+}: {
+  processor: Processor;
+  index: number;
+  open: boolean;
+  onToggle: () => void;
+  onChange: (processor: Processor) => void;
+  onRemove: () => void;
+}) {
+  const { t } = useTranslation();
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: processor.id });
+  const summary = processorSummary(processor, t);
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn(
+        'overflow-hidden rounded-lg border bg-card transition-colors',
+        processor.disabled && 'bg-muted/30',
+        isDragging && 'relative z-10 opacity-70',
+      )}
+    >
+      <div className="flex items-center gap-2 py-2 pr-2 pl-1.5">
+        <button
+          type="button"
+          ref={setActivatorNodeRef}
+          {...attributes}
+          {...listeners}
+          aria-label={t('processors.drag')}
+          className="flex size-8 shrink-0 touch-none cursor-grab items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
+        >
+          <GripVertical className="size-4" />
+        </button>
+        <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted font-mono text-xs text-muted-foreground">
+          {index + 1}
+        </span>
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={onToggle}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md py-1 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium">
+              {t(`processors.${processor.type}`)}
+            </span>
+            <span
+              className={cn(
+                'mt-0.5 block truncate text-xs text-muted-foreground',
+                !summary && 'hidden',
+              )}
+            >
+              {summary}
+            </span>
+          </span>
+          <ChevronDown
+            className={cn(
+              'size-4 shrink-0 text-muted-foreground transition-transform',
+              open && 'rotate-180',
+            )}
+          />
+        </button>
+        <Switch
+          aria-label={t('common.enabled')}
+          checked={!processor.disabled}
+          onCheckedChange={(checked) => onChange({ ...processor, disabled: !checked })}
+        />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon-sm" aria-label={t('common.actions')}>
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem className="text-destructive" onClick={onRemove}>
+              <Trash2 className="size-4" />
+              {t('common.delete')}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      {open ? (
+        <div className="border-t bg-muted/20 p-3">
+          <ArgsEditor processor={processor} onChange={onChange} />
+        </div>
+      ) : null}
     </div>
   );
 }
