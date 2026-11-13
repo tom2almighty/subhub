@@ -7,6 +7,7 @@ import {
   Send,
   Server,
   Settings,
+  Share2,
   Sun,
   UserRound,
 } from 'lucide-react';
@@ -28,6 +29,7 @@ import { cn } from '@/lib/utils';
 const NAV = [
   { to: '/sources', key: 'nav.sources', icon: Server },
   { to: '/outputs', key: 'nav.outputs', icon: Send },
+  { to: '/shares', key: 'nav.shares', icon: Share2 },
   { to: '/settings', key: 'nav.settings', icon: Settings },
 ] as const;
 
@@ -69,7 +71,7 @@ function MobileBottomNav() {
   const { t } = useTranslation();
 
   return (
-    <div className="fixed bottom-4 inset-x-0 z-40 flex justify-center px-4 sm:hidden pointer-events-none">
+    <div className="fixed bottom-3 inset-x-0 z-40 flex justify-center px-3 sm:hidden pointer-events-none">
       <nav className="pointer-events-auto flex items-center gap-1 rounded-full border border-border/80 bg-background/90 p-1.5 shadow-xl backdrop-blur-xl ring-1 ring-black/5 select-none dark:ring-white/10">
         {NAV.map((item) => {
           const Icon = item.icon;
@@ -79,14 +81,14 @@ function MobileBottomNav() {
               to={item.to}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium transition-all duration-200 active:scale-95',
+                  'flex flex-col items-center justify-center gap-1 rounded-full px-2.5 py-1.5 text-xs font-medium leading-none transition-all duration-200 active:scale-95',
                   isActive
                     ? 'bg-foreground text-background shadow-xs font-semibold'
                     : 'text-muted-foreground hover:text-foreground',
                 )
               }
             >
-              <Icon className="size-4 shrink-0" />
+              <Icon className="size-5 shrink-0" />
               <span>{t(item.key)}</span>
             </NavLink>
           );
@@ -201,7 +203,7 @@ export function AppLayout() {
       </header>
 
       <main className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col px-4 pt-4 pb-20 sm:px-6 sm:py-6 sm:pb-8 lg:px-8">
+        <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col px-4 pt-4 pb-24 sm:px-6 sm:py-6 sm:pb-8 lg:px-8">
           <Outlet />
         </div>
       </main>
