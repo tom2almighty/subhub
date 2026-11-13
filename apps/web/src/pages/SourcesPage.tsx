@@ -3,8 +3,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Activity,
   AlertCircle,
-  Clock,
+  CalendarClock,
   MoreHorizontal,
+  Pencil,
   Plus,
   RefreshCw,
   Server,
@@ -13,6 +14,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
+import { ColumnSwitcher } from '@/components/common/ColumnSwitcher';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { EmptyState } from '@/components/common/EmptyState';
 import { PageHeader } from '@/components/common/PageHeader';
@@ -25,12 +27,12 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { api } from '@/lib/api';
-import { formatDate, formatFlow } from '@/lib/format';
+import { formatExpire, formatFlow } from '@/lib/format';
+import { columnGridClass, useColumnCount } from '@/lib/use-columns';
 import { cn } from '@/lib/utils';
 
 export function SourcesPage() {
@@ -39,6 +41,7 @@ export function SourcesPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<SourceDto | undefined>();
   const [deleting, setDeleting] = useState<SourceDto | undefined>();
+  const [columns, setColumns] = useColumnCount('subhub.sources.columns');
 
   const sources = useQuery({ queryKey: ['sources'], queryFn: api.listSources });
   const totalNodes = sources.data?.reduce((sum, source) => sum + source.nodeCount, 0) ?? 0;
@@ -75,27 +78,35 @@ export function SourcesPage() {
             : undefined
         }
         action={
-          <Button
-            size="sm"
-            onClick={() => {
-              setEditing(undefined);
-              setFormOpen(true);
-            }}
-          >
-            <Plus className="size-4" />
-            <span>{t('sources.new')}</span>
-          </Button>
+          <>
+            <ColumnSwitcher value={columns} onChange={setColumns} />
+            <Button
+              size="sm"
+              onClick={() => {
+                setEditing(undefined);
+                setFormOpen(true);
+              }}
+            >
+              <Plus className="size-4" />
+              <span>{t('sources.new')}</span>
+            </Button>
+          </>
         }
       />
 
       {sources.isLoading ? (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className={cn('grid gap-3', columnGridClass(columns))}>
           <Skeleton className="h-28 w-full rounded-xl" />
           <Skeleton className="h-28 w-full rounded-xl" />
           <Skeleton className="h-28 w-full rounded-xl" />
         </div>
       ) : sources.data?.length ? (
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-0.5">
+        <div
+          className={cn(
+            'grid min-h-0 flex-1 content-start gap-3 overflow-y-auto pr-0.5',
+            columnGridClass(columns),
+          )}
+        >
           {sources.data.map((source) => {
             const isRefreshing = refresh.isPending && refresh.variables === source.id;
 
@@ -137,8 +148,11 @@ export function SourcesPage() {
                         </div>
                       ) : null}
                       <div className="flex items-center gap-1.5">
-                        <Clock className="size-3.5 text-muted-foreground" />
-                        <span>{formatDate(source.fetchedAt)}</span>
+                        <CalendarClock className="size-3.5 text-muted-foreground" />
+                        <span>
+                          {t('sources.expiresAt')}:{' '}
+                          {source.flow?.expire ? formatExpire(source.flow.expire) : '∞'}
+                        </span>
                       </div>
                     </div>
 
@@ -168,6 +182,18 @@ export function SourcesPage() {
                     >
                       <RefreshCw className={cn('size-3.5', isRefreshing && 'animate-spin')} />
                     </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      title={t('common.edit')}
+                      aria-label={t('common.edit')}
+                      onClick={() => {
+                        setEditing(source);
+                        setFormOpen(true);
+                      }}
+                    >
+                      <Pencil className="size-3.5" />
+                    </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon-sm" aria-label={t('common.actions')}>
@@ -175,22 +201,6 @@ export function SourcesPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-44">
-                        <DropdownMenuItem
-                          onClick={() => refresh.mutate(source.id)}
-                          disabled={isRefreshing}
-                        >
-                          <RefreshCw className="size-4" />
-                          {t('sources.refreshNow')}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => {
-                            setEditing(source);
-                            setFormOpen(true);
-                          }}
-                        >
-                          {t('common.edit')}
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
                         <DropdownMenuItem
                           className="text-destructive focus:text-destructive"
                           onClick={() => setDeleting(source)}
@@ -206,7 +216,7 @@ export function SourcesPage() {
           })}
         </div>
       ) : (
-        <Card className="flex min-h-[300px] flex-1 items-center justify-center p-8">
+        <Card className="flex min-h-75 flex-1 items-center justify-center p-8">
           <EmptyState
             icon={Server}
             title={t('sources.empty')}

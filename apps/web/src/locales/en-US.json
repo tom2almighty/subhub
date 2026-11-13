@@ -35,7 +35,8 @@
     "moveDown": "Move down",
     "expand": "Expand",
     "collapse": "Collapse",
-    "actions": "Actions"
+    "actions": "Actions",
+    "columns": "Columns"
   },
   "auth": {
     "login": "Sign in",

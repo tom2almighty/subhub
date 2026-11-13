@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
+import { ColumnSwitcher } from '@/components/common/ColumnSwitcher';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { EmptyState } from '@/components/common/EmptyState';
 import { PageHeader } from '@/components/common/PageHeader';
@@ -22,6 +23,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { api } from '@/lib/api';
+import { columnGridClass, useColumnCount } from '@/lib/use-columns';
+import { cn } from '@/lib/utils';
 
 export function OutputsPage() {
   const { t } = useTranslation();
@@ -29,6 +32,7 @@ export function OutputsPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<OutputDto | undefined>();
   const [deleting, setDeleting] = useState<OutputDto | undefined>();
+  const [columns, setColumns] = useColumnCount('subhub.outputs.columns');
 
   const outputs = useQuery({ queryKey: ['outputs'], queryFn: api.listOutputs });
   const sources = useQuery({ queryKey: ['sources'], queryFn: api.listSources });
@@ -51,26 +55,34 @@ export function OutputsPage() {
           outputs.data ? t('outputs.summary', { count: outputs.data.length }) : undefined
         }
         action={
-          <Button
-            size="sm"
-            onClick={() => {
-              setEditing(undefined);
-              setFormOpen(true);
-            }}
-          >
-            <Plus className="size-4" />
-            <span>{t('outputs.new')}</span>
-          </Button>
+          <>
+            <ColumnSwitcher value={columns} onChange={setColumns} />
+            <Button
+              size="sm"
+              onClick={() => {
+                setEditing(undefined);
+                setFormOpen(true);
+              }}
+            >
+              <Plus className="size-4" />
+              <span>{t('outputs.new')}</span>
+            </Button>
+          </>
         }
       />
 
       {outputs.isLoading ? (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className={cn('grid gap-3', columnGridClass(columns))}>
           <Skeleton className="h-28 w-full rounded-xl" />
           <Skeleton className="h-28 w-full rounded-xl" />
         </div>
       ) : outputs.data?.length ? (
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-0.5">
+        <div
+          className={cn(
+            'grid min-h-0 flex-1 content-start gap-3 overflow-y-auto pr-0.5',
+            columnGridClass(columns),
+          )}
+        >
           {outputs.data.map((output) => (
             <Card
               key={output.id}
@@ -163,7 +175,7 @@ export function OutputsPage() {
           ))}
         </div>
       ) : (
-        <Card className="flex min-h-[300px] flex-1 items-center justify-center p-8">
+        <Card className="flex min-h-75 flex-1 items-center justify-center p-8">
           <EmptyState
             icon={Send}
             title={t('outputs.empty')}
