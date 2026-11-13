@@ -26,7 +26,7 @@ export function NodeList({
         : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3';
 
   return (
-    <ul className={cn('grid gap-2', gridColsClass, className)}>
+    <ul className={cn('grid content-start gap-2', gridColsClass, className)}>
       {nodes.map((node) => (
         <li
           key={`${node.type}-${node.server}-${node.port}-${node.name}`}
