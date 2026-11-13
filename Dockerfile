@@ -1,4 +1,4 @@
-FROM node:26-bookworm-slim AS build
+FROM node:26-alpine AS build
 
 WORKDIR /app
 RUN npm install -g pnpm@12.18.0
@@ -13,9 +13,14 @@ RUN pnpm install --frozen-lockfile
 
 COPY . .
 RUN pnpm build \
-  && pnpm --filter @subhub/server --prod deploy /out
+  && pnpm --filter @subhub/server --prod deploy /out \
+  && find /out/node_modules -path '*better-sqlite3/prebuilds/*' \
+  ! -name 'linuxmusl-*' -delete
 
-FROM node:26-bookworm-slim AS runtime
+FROM node:26-alpine AS runtime
+
+RUN rm -rf /usr/local/lib/node_modules /usr/local/include \
+  && rm -f /usr/local/bin/npm /usr/local/bin/npx
 
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
