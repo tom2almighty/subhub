@@ -76,7 +76,7 @@ target 会传入每一级处理器。DNS 处理器放在节点源链路，用于
 
 ### 前端
 
-`App.tsx` 懒加载页面；`RequireAuth` 通过 `/api/auth/me` 判定登录。`AppLayout` 是 `h-svh` 满高外壳，页面遵循 `flex min-h-0 flex-1 flex-col` + 内部滚动的结构。节点源与聚合列表通过 `ColumnSwitcher` 切换 1/2/3 列，选择写入 localStorage。分享链接集中在 `SharesPage` 管理，节点源与聚合详情不再包含分享面板。`ProcessorEditor` 使用 dnd-kit 拖动排序，顺序即处理器执行顺序。组件只用 `components/ui` 中的 shadcn 源码与语义化 Tailwind token。
+`App.tsx` 懒加载页面；`RequireAuth` 通过 `/api/auth/me` 判定登录。`AppLayout` 是 `h-svh` 满高外壳，页面遵循 `flex min-h-0 flex-1 flex-col` + 内部滚动的结构。节点源与聚合列表通过 `ViewSwitcher` 在列表和卡片间切换，选择写入 localStorage；移动端固定卡片，列数由 `.card-grid` 的 auto-fill 按可用宽度决定。分享链接集中在 `SharesPage` 管理，节点源与聚合详情不再包含分享面板。`ProcessorEditor` 使用 dnd-kit 拖动排序，顺序即处理器执行顺序。组件只用 `components/ui` 中的 shadcn 源码与语义化 Tailwind token。
 
 i18n 默认中文，资源只包含 `zh-CN` 与 `en-US`，`types/i18n.d.ts` 从 `zh-CN.json` 推导 key，新增文案必须同时补两个 JSON。
 
