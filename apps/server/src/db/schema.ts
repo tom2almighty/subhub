@@ -21,6 +21,7 @@ export const sources = sqliteTable('sources', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull().unique(),
   kind: text('kind', { enum: ['remote', 'manual'] }).notNull(),
+  token: text('token').notNull().default(''),
   url: text('url').notNull().default(''),
   flowUrl: text('flow_url').notNull().default(''),
   userAgent: text('user_agent').notNull().default(''),
@@ -69,9 +70,8 @@ export const outputSources = sqliteTable(
 
 export const shares = sqliteTable('shares', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  outputId: integer('output_id')
-    .notNull()
-    .references(() => outputs.id, { onDelete: 'cascade' }),
+  kind: text('kind', { enum: ['source', 'output'] }).notNull(),
+  targetId: integer('target_id').notNull(),
   token: text('token').notNull().unique(),
   note: text('note').notNull().default(''),
   expiresAt: text('expires_at'),

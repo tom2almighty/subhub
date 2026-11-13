@@ -16,6 +16,9 @@ const SourceDetailPage = lazy(() =>
 const OutputsPage = lazy(() =>
   import('@/pages/OutputsPage').then((module) => ({ default: module.OutputsPage })),
 );
+const SharesPage = lazy(() =>
+  import('@/pages/SharesPage').then((module) => ({ default: module.SharesPage })),
+);
 const OutputDetailPage = lazy(() =>
   import('@/pages/OutputDetailPage').then((module) => ({ default: module.OutputDetailPage })),
 );
@@ -49,6 +52,7 @@ export default function App() {
           <Route path="/sources/:id" element={<SourceDetailPage />} />
           <Route path="/outputs" element={<OutputsPage />} />
           <Route path="/outputs/:id" element={<OutputDetailPage />} />
+          <Route path="/shares" element={<SharesPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/sources" replace />} />

@@ -30,9 +30,12 @@ export const TARGETS = [
 
 export type Target = (typeof TARGETS)[number];
 
+/** Format served by a source link when no ?target= override is provided. */
+export const SOURCE_DEFAULT_TARGET: Target = 'uri';
+
 export const TARGET_LABELS: Record<Target, string> = {
   surge: 'Surge',
-  mihomo: 'Mihomo / Clash.Meta',
+  mihomo: 'Mihomo',
   stash: 'Stash',
   loon: 'Loon',
   qx: 'Quantumult X',
@@ -72,7 +75,7 @@ export interface PluginOptions {
 }
 
 /**
- * Normalized proxy model. Field names intentionally follow the Clash/Mihomo
+ * Normalized proxy model. Field names intentionally follow the Mihomo
  * convention because most producers need to emit those names.
  */
 export interface ProxyNode {
@@ -363,7 +366,12 @@ export const outputCreateSchema = z.object({
 
 export const outputUpdateSchema = outputCreateSchema.partial();
 
+export const shareTargetKindSchema = z.enum(['source', 'output']);
+export type ShareTargetKind = z.infer<typeof shareTargetKindSchema>;
+
 export const shareCreateSchema = z.object({
+  kind: shareTargetKindSchema,
+  targetId: z.number().int().positive(),
   note: z.string().trim().max(200).default(''),
   expiresInDays: z.number().int().min(0).max(3650).default(0),
   maxUses: z.number().int().min(0).max(1_000_000).default(0),
@@ -427,6 +435,7 @@ export interface SourceDto {
   enabled: boolean;
   processors: Processor[];
   nodeCount: number;
+  directUrl: string;
   fetchedAt: string | null;
   lastError: string | null;
   flow: FlowInfo | null;
@@ -451,8 +460,10 @@ export interface OutputDto {
 
 export interface ShareDto {
   id: number;
-  outputId: number;
-  outputName: string;
+  kind: ShareTargetKind;
+  targetId: number;
+  targetName: string;
+  defaultTarget: Target;
   token?: string;
   url: string;
   note: string;

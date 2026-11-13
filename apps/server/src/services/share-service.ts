@@ -1,23 +1,47 @@
-import type { ShareDto, shareCreateSchema } from '@subhub/shared';
-import { asc, eq, sql } from 'drizzle-orm';
+import {
+  type ShareDto,
+  type ShareTargetKind,
+  SOURCE_DEFAULT_TARGET,
+  type shareCreateSchema,
+  type Target,
+} from '@subhub/shared';
+import { asc, eq, inArray, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { randomToken } from '../auth/password.js';
 import { db } from '../db/index.js';
-import { outputs, type ShareRow, shares } from '../db/schema.js';
+import { outputs, type ShareRow, shares, sources } from '../db/schema.js';
 import { notFound } from '../errors.js';
 import { getSubscriptionPaths } from './settings-service.js';
 
 export type ShareCreateInput = z.infer<typeof shareCreateSchema>;
 
+interface TargetInfo {
+  name: string;
+  defaultTarget: Target;
+}
+
 function now(): string {
   return new Date().toISOString();
 }
 
-export function serializeShare(row: ShareRow, outputName: string): ShareDto {
+function targetInfo(kind: ShareTargetKind, targetId: number): TargetInfo {
+  if (kind === 'output') {
+    const row = db.select().from(outputs).where(eq(outputs.id, targetId)).get();
+    if (!row) throw notFound(`Output ${targetId} does not exist`, 'OUTPUT_NOT_FOUND');
+    return { name: row.name, defaultTarget: row.target };
+  }
+  const row = db.select().from(sources).where(eq(sources.id, targetId)).get();
+  if (!row) throw notFound(`Source ${targetId} does not exist`, 'SOURCE_NOT_FOUND');
+  return { name: row.name, defaultTarget: SOURCE_DEFAULT_TARGET };
+}
+
+export function serializeShare(row: ShareRow, info: TargetInfo): ShareDto {
   return {
     id: row.id,
-    outputId: row.outputId,
-    outputName,
+    kind: row.kind,
+    targetId: row.targetId,
+    targetName: info.name,
+    defaultTarget: info.defaultTarget,
     token: row.token,
     url: `/${getSubscriptionPaths().sharePath}/${row.token}`,
     note: row.note,
@@ -28,21 +52,42 @@ export function serializeShare(row: ShareRow, outputName: string): ShareDto {
   };
 }
 
-export function listShares(outputId: number): ShareDto[] {
-  const output = db.select().from(outputs).where(eq(outputs.id, outputId)).get();
-  if (!output) throw notFound(`Output ${outputId} does not exist`, 'OUTPUT_NOT_FOUND');
-  return db
-    .select()
-    .from(shares)
-    .where(eq(shares.outputId, outputId))
-    .orderBy(asc(shares.id))
-    .all()
-    .map((row) => serializeShare(row, output.name));
+function infoMap(kind: ShareTargetKind, rows: ShareRow[]): Map<number, TargetInfo> {
+  const ids = [...new Set(rows.filter((row) => row.kind === kind).map((row) => row.targetId))];
+  if (ids.length === 0) return new Map();
+  const map = new Map<number, TargetInfo>();
+  if (kind === 'output') {
+    const found = db
+      .select({ id: outputs.id, name: outputs.name, target: outputs.target })
+      .from(outputs)
+      .where(inArray(outputs.id, ids))
+      .all();
+    for (const row of found) map.set(row.id, { name: row.name, defaultTarget: row.target });
+  } else {
+    const found = db
+      .select({ id: sources.id, name: sources.name })
+      .from(sources)
+      .where(inArray(sources.id, ids))
+      .all();
+    for (const row of found) {
+      map.set(row.id, { name: row.name, defaultTarget: SOURCE_DEFAULT_TARGET });
+    }
+  }
+  return map;
 }
 
-export function createShare(outputId: number, input: ShareCreateInput): ShareDto {
-  const output = db.select().from(outputs).where(eq(outputs.id, outputId)).get();
-  if (!output) throw notFound(`Output ${outputId} does not exist`, 'OUTPUT_NOT_FOUND');
+export function listShares(): ShareDto[] {
+  const rows = db.select().from(shares).orderBy(asc(shares.id)).all();
+  const outputInfo = infoMap('output', rows);
+  const sourceInfo = infoMap('source', rows);
+  return rows.flatMap((row) => {
+    const info = (row.kind === 'output' ? outputInfo : sourceInfo).get(row.targetId);
+    return info ? [serializeShare(row, info)] : [];
+  });
+}
+
+export function createShare(input: ShareCreateInput): ShareDto {
+  const info = targetInfo(input.kind, input.targetId);
   const expiresAt =
     input.expiresInDays && input.expiresInDays > 0
       ? new Date(Date.now() + input.expiresInDays * 24 * 60 * 60 * 1000).toISOString()
@@ -50,7 +95,8 @@ export function createShare(outputId: number, input: ShareCreateInput): ShareDto
   const row = db
     .insert(shares)
     .values({
-      outputId,
+      kind: input.kind,
+      targetId: input.targetId,
       token: randomToken(24),
       note: input.note ?? '',
       expiresAt,
@@ -60,15 +106,14 @@ export function createShare(outputId: number, input: ShareCreateInput): ShareDto
     })
     .returning()
     .get();
-  return serializeShare(row, output.name);
+  return serializeShare(row, info);
 }
 
 export function updateShareNote(id: number, note: string): ShareDto {
   const row = db.select().from(shares).where(eq(shares.id, id)).get();
   if (!row) throw notFound(`Share ${id} does not exist`, 'SHARE_NOT_FOUND');
   db.update(shares).set({ note }).where(eq(shares.id, id)).run();
-  const output = db.select().from(outputs).where(eq(outputs.id, row.outputId)).get();
-  return serializeShare({ ...row, note }, output?.name ?? '');
+  return serializeShare({ ...row, note }, targetInfo(row.kind, row.targetId));
 }
 
 export function deleteShare(id: number): void {

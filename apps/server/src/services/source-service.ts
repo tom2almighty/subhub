@@ -1,18 +1,21 @@
-import { applyProcessors, parseNodes } from '@subhub/proxy-core';
-import type {
-  FlowInfo,
-  ProxyNode,
-  SourceDto,
-  sourceCreateSchema,
-  sourceUpdateSchema,
-  Target,
+import { applyProcessors, parseNodes, produce } from '@subhub/proxy-core';
+import {
+  type FlowInfo,
+  type ProxyNode,
+  SOURCE_DEFAULT_TARGET,
+  type SourceDto,
+  type sourceCreateSchema,
+  type sourceUpdateSchema,
+  type Target,
 } from '@subhub/shared';
 import { asc, eq, sql } from 'drizzle-orm';
 import type { z } from 'zod';
+import { randomToken } from '../auth/password.js';
 import { db } from '../db/index.js';
 import { type SourceRow, sources } from '../db/schema.js';
 import { conflict, isUniqueConstraintError, notFound } from '../errors.js';
 import { fetchFlow, fetchSubscription } from './fetcher.js';
+import { getSubscriptionPaths } from './settings-service.js';
 
 export type SourceCreateInput = z.infer<typeof sourceCreateSchema>;
 export type SourceUpdateInput = z.infer<typeof sourceUpdateSchema>;
@@ -26,6 +29,7 @@ export function serializeSource(row: SourceRow): SourceDto {
     id: row.id,
     name: row.name,
     kind: row.kind,
+    directUrl: `/${getSubscriptionPaths().privatePath}/${row.token}`,
     url: row.url,
     flowUrl: row.flowUrl,
     userAgent: row.userAgent,
@@ -59,6 +63,35 @@ export function getSource(id: number): SourceDto {
   return serializeSource(findSource(id));
 }
 
+export function findSourceByToken(token: string): SourceRow {
+  const row = db.select().from(sources).where(eq(sources.token, token)).get();
+  if (!row) throw notFound('Subscription link does not exist', 'SOURCE_NOT_FOUND');
+  return row;
+}
+
+export async function buildSource(
+  source: SourceRow,
+  targetOverride?: Target,
+): Promise<{
+  target: Target;
+  nodes: ProxyNode[];
+  content: string;
+  warnings: string[];
+}> {
+  const target = targetOverride ?? SOURCE_DEFAULT_TARGET;
+  const warnings: string[] = [];
+  const nodes = await applyProcessors(source.nodes, source.processors ?? [], target, {
+    onWarning: (message) => warnings.push(message),
+  });
+  const produced = produce(nodes, target);
+  return {
+    target,
+    nodes,
+    content: produced.content,
+    warnings: [...warnings, ...produced.warnings],
+  };
+}
+
 export async function getSourceNodes(
   id: number,
   target: Target = 'uri',
@@ -79,6 +112,7 @@ export function createSource(input: SourceCreateInput): SourceDto {
       .values({
         name: input.name,
         kind: input.kind ?? 'remote',
+        token: randomToken(24),
         url: input.url ?? '',
         flowUrl: input.flowUrl ?? '',
         userAgent: input.userAgent ?? '',

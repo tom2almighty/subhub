@@ -1,10 +1,4 @@
-import {
-  outputCreateSchema,
-  outputUpdateSchema,
-  shareCreateSchema,
-  shareUpdateSchema,
-  targetSchema,
-} from '@subhub/shared';
+import { outputCreateSchema, outputUpdateSchema, targetSchema } from '@subhub/shared';
 import type { FastifyInstance } from 'fastify';
 import { badRequest } from '../errors.js';
 import {
@@ -15,12 +9,6 @@ import {
   previewOutput,
   updateOutput,
 } from '../services/output-service.js';
-import {
-  createShare,
-  deleteShare,
-  listShares,
-  updateShareNote,
-} from '../services/share-service.js';
 
 function parseId(value: string): number {
   const id = Number(value);
@@ -61,29 +49,5 @@ export default function registerOutputRoutes(app: FastifyInstance): void {
     const parsed = targetSchema.safeParse(target);
     if (!parsed.success) throw badRequest(`Unsupported target: ${target}`);
     return previewOutput(parseId(id), parsed.data);
-  });
-
-  app.get('/api/outputs/:id/shares', async (request) => {
-    const { id } = request.params as { id: string };
-    return listShares(parseId(id));
-  });
-
-  app.post('/api/outputs/:id/shares', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const input = shareCreateSchema.parse(request.body ?? {});
-    const share = createShare(parseId(id), input);
-    return reply.status(201).send(share);
-  });
-
-  app.patch('/api/shares/:id', async (request) => {
-    const { id } = request.params as { id: string };
-    const input = shareUpdateSchema.parse(request.body);
-    return updateShareNote(parseId(id), input.note);
-  });
-
-  app.delete('/api/shares/:id', async (request) => {
-    const { id } = request.params as { id: string };
-    deleteShare(parseId(id));
-    return { ok: true };
   });
 }

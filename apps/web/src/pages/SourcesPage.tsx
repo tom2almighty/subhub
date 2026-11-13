@@ -1,4 +1,4 @@
-import type { SourceDto } from '@subhub/shared';
+import { SOURCE_DEFAULT_TARGET, type SourceDto } from '@subhub/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Activity,
@@ -7,7 +7,6 @@ import {
   MoreHorizontal,
   Plus,
   RefreshCw,
-  Send,
   Server,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -42,7 +41,6 @@ export function SourcesPage() {
   const [deleting, setDeleting] = useState<SourceDto | undefined>();
 
   const sources = useQuery({ queryKey: ['sources'], queryFn: api.listSources });
-  const outputs = useQuery({ queryKey: ['outputs'], queryFn: api.listOutputs });
   const totalNodes = sources.data?.reduce((sum, source) => sum + source.nodeCount, 0) ?? 0;
 
   const refresh = useMutation({
@@ -51,21 +49,6 @@ export function SourcesPage() {
       void queryClient.invalidateQueries({ queryKey: ['sources'] });
       void queryClient.invalidateQueries({ queryKey: ['source', source.id] });
       toast.success(t('common.refresh'));
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-
-  const generateDirect = useMutation({
-    mutationFn: (source: SourceDto) =>
-      api.createOutput({
-        name: source.name,
-        target: 'surge',
-        sourceIds: [source.id],
-        enabled: true,
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['outputs'] });
-      toast.success(t('sources.generateOutputSuccess'));
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -115,9 +98,6 @@ export function SourcesPage() {
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-0.5">
           {sources.data.map((source) => {
             const isRefreshing = refresh.isPending && refresh.variables === source.id;
-            const directOutput = outputs.data?.find(
-              (o) => o.sourceIds.length === 1 && o.sourceIds[0] === source.id,
-            );
 
             return (
               <Card
@@ -171,26 +151,12 @@ export function SourcesPage() {
                   </Link>
 
                   <div className="flex items-center justify-end gap-1.5 shrink-0 pt-2 sm:pt-0 border-t border-border/40 sm:border-t-0">
-                    {directOutput ? (
-                      <CopySubscription
-                        url={directOutput.url}
-                        defaultTarget={directOutput.target}
-                        variant="outline"
-                        showLabel
-                      />
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-xs text-muted-foreground hover:text-foreground"
-                        onClick={() => generateDirect.mutate(source)}
-                        disabled={generateDirect.isPending}
-                        title={t('sources.generateOutput')}
-                      >
-                        <Send className="size-3.5 mr-1" />
-                        <span>{t('sources.generateOutput')}</span>
-                      </Button>
-                    )}
+                    <CopySubscription
+                      url={source.directUrl}
+                      defaultTarget={SOURCE_DEFAULT_TARGET}
+                      variant="outline"
+                      showLabel
+                    />
 
                     <Button
                       variant="ghost"
@@ -216,15 +182,6 @@ export function SourcesPage() {
                           <RefreshCw className="size-4" />
                           {t('sources.refreshNow')}
                         </DropdownMenuItem>
-                        {!directOutput ? (
-                          <DropdownMenuItem
-                            onClick={() => generateDirect.mutate(source)}
-                            disabled={generateDirect.isPending}
-                          >
-                            <Send className="size-4" />
-                            {t('sources.generateOutput')}
-                          </DropdownMenuItem>
-                        ) : null}
                         <DropdownMenuItem
                           onClick={() => {
                             setEditing(source);

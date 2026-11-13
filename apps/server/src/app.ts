@@ -13,6 +13,7 @@ import registerAuthRoutes from './routes/auth.js';
 import registerHealthRoute from './routes/health.js';
 import registerOutputRoutes from './routes/outputs.js';
 import registerSettingsRoutes from './routes/settings.js';
+import registerShareRoutes from './routes/shares.js';
 import registerSourceRoutes from './routes/sources.js';
 import registerSubscriptionRoutes from './routes/subscription.js';
 import { getSubscriptionPaths } from './services/settings-service.js';
@@ -96,6 +97,7 @@ export async function createApp(): Promise<FastifyInstance> {
   registerAuthRoutes(app);
   registerSourceRoutes(app);
   registerOutputRoutes(app);
+  registerShareRoutes(app);
   registerSettingsRoutes(app);
   registerSubscriptionRoutes(app);
 

@@ -1,4 +1,4 @@
-import type { Processor, ShareDto } from '@subhub/shared';
+import { type Processor, SOURCE_DEFAULT_TARGET } from '@subhub/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle,
@@ -8,18 +8,14 @@ import {
   Link2,
   Loader2,
   Pencil,
-  Plus,
   RefreshCw,
   Search,
   Send,
-  Share2,
-  Trash2,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { CopyButton } from '@/components/common/CopyButton';
 import { PageHeader } from '@/components/common/PageHeader';
 import { NodeList } from '@/components/nodes/NodeList';
@@ -28,27 +24,12 @@ import { ProcessorEditor } from '@/components/outputs/ProcessorEditor';
 import { SourceFormDialog } from '@/components/sources/SourceFormDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api } from '@/lib/api';
-import { formatDate, formatFlow } from '@/lib/format';
+import { formatExpire, formatFlow } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 export function SourceDetailPage() {
@@ -60,8 +41,6 @@ export function SourceDetailPage() {
   const [tab, setTab] = useState('overview');
   const [search, setSearch] = useState('');
   const [processors, setProcessors] = useState<Processor[]>([]);
-  const [editingShare, setEditingShare] = useState<ShareDto | undefined>();
-  const [deletingShare, setDeletingShare] = useState<ShareDto | undefined>();
 
   const source = useQuery({
     queryKey: ['source', sourceId],
@@ -73,21 +52,9 @@ export function SourceDetailPage() {
     queryFn: () => api.getSourceNodes(sourceId),
     enabled: Number.isInteger(sourceId) && sourceId > 0,
   });
-  const outputs = useQuery({ queryKey: ['outputs'], queryFn: api.listOutputs });
-
   useEffect(() => {
     if (source.data) setProcessors(source.data.processors ?? []);
   }, [source.data]);
-
-  const directOutput = outputs.data?.find(
-    (o) => o.sourceIds.length === 1 && o.sourceIds[0] === sourceId,
-  );
-
-  const shares = useQuery({
-    queryKey: ['shares', directOutput?.id],
-    queryFn: () => api.listShares(directOutput!.id),
-    enabled: !!directOutput?.id,
-  });
 
   const refresh = useMutation({
     mutationFn: () => api.refreshSource(sourceId),
@@ -100,23 +67,6 @@ export function SourceDetailPage() {
     onError: (error: Error) => toast.error(error.message),
   });
 
-  const generateDirect = useMutation({
-    mutationFn: () => {
-      if (!source.data) throw new Error('Source not ready');
-      return api.createOutput({
-        name: source.data.name,
-        target: 'surge',
-        sourceIds: [sourceId],
-        enabled: true,
-      });
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['outputs'] });
-      toast.success(t('sources.generateOutputSuccess'));
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-
   const saveProcessors = useMutation({
     mutationFn: () => api.updateSource(sourceId, { processors }),
     onSuccess: () => {
@@ -124,43 +74,6 @@ export function SourceDetailPage() {
       void queryClient.invalidateQueries({ queryKey: ['source-nodes', sourceId] });
       void queryClient.invalidateQueries({ queryKey: ['sources'] });
       toast.success(t('sources.processorsSaved'));
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-
-  const createShare = useMutation({
-    mutationFn: (body: { note: string; expiresInDays: number; maxUses: number }) => {
-      if (!directOutput) throw new Error('No direct output');
-      return api.createShare(directOutput.id, body);
-    },
-    onSuccess: () => {
-      if (directOutput)
-        void queryClient.invalidateQueries({ queryKey: ['shares', directOutput.id] });
-      void queryClient.invalidateQueries({ queryKey: ['outputs'] });
-      toast.success(t('common.save'));
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-
-  const updateNote = useMutation({
-    mutationFn: ({ id, note }: { id: number; note: string }) => api.updateShare(id, note),
-    onSuccess: () => {
-      if (directOutput)
-        void queryClient.invalidateQueries({ queryKey: ['shares', directOutput.id] });
-      setEditingShare(undefined);
-      toast.success(t('common.save'));
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-
-  const removeShare = useMutation({
-    mutationFn: api.deleteShare,
-    onSuccess: () => {
-      if (directOutput)
-        void queryClient.invalidateQueries({ queryKey: ['shares', directOutput.id] });
-      void queryClient.invalidateQueries({ queryKey: ['outputs'] });
-      setDeletingShare(undefined);
-      toast.success(t('common.delete'));
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -242,7 +155,7 @@ export function SourceDetailPage() {
       />
 
       <Tabs value={tab} onValueChange={setTab} className="min-h-0 flex-1 flex flex-col">
-        <TabsList className="w-full shrink-0 grid grid-cols-4 sm:w-fit sm:inline-flex">
+        <TabsList className="w-full shrink-0 grid grid-cols-3 sm:w-fit sm:inline-flex">
           <TabsTrigger value="overview" className="text-xs sm:text-sm px-2 sm:px-4">
             {t('sources.overview')}
           </TabsTrigger>
@@ -251,9 +164,6 @@ export function SourceDetailPage() {
           </TabsTrigger>
           <TabsTrigger value="nodes" className="text-xs sm:text-sm px-2 sm:px-4">
             {t('sources.nodes')}
-          </TabsTrigger>
-          <TabsTrigger value="shares" className="text-xs sm:text-sm px-2 sm:px-4">
-            {t('sources.shares')}
           </TabsTrigger>
         </TabsList>
 
@@ -274,50 +184,25 @@ export function SourceDetailPage() {
                     {t('sources.directSubscriptionHint')}
                   </CardDescription>
                 </div>
-                {directOutput ? (
-                  <Badge variant="outline" className="text-xs font-normal">
-                    {directOutput.name}
-                  </Badge>
-                ) : null}
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {directOutput ? (
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
-                    <Link2 className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
-                      {window.location.origin}
-                      {directOutput.url}
-                    </span>
-                  </div>
-                  <CopySubscription
-                    url={directOutput.url}
-                    defaultTarget={directOutput.target}
-                    showLabel
-                    variant="default"
-                    className="w-full sm:w-auto"
-                  />
-                </div>
-              ) : (
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-dashed p-3 sm:p-4 bg-muted/10">
-                  <span className="text-xs text-muted-foreground">
-                    尚未生成单源专属直链，点击右侧立即一键开启
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
+                  <Link2 className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
+                    {window.location.origin}
+                    {data.directUrl}
                   </span>
-                  <Button
-                    size="sm"
-                    onClick={() => generateDirect.mutate()}
-                    disabled={generateDirect.isPending}
-                  >
-                    {generateDirect.isPending ? (
-                      <Loader2 className="size-3.5 animate-spin mr-1" />
-                    ) : (
-                      <Send className="size-3.5 mr-1" />
-                    )}
-                    <span>{t('sources.generateOutput')}</span>
-                  </Button>
                 </div>
-              )}
+                <CopySubscription
+                  url={data.directUrl}
+                  defaultTarget={SOURCE_DEFAULT_TARGET}
+                  showLabel
+                  variant="default"
+                  className="w-full sm:w-auto"
+                />
+              </div>
             </CardContent>
           </Card>
 
@@ -328,7 +213,7 @@ export function SourceDetailPage() {
                 value={String(allNodes.length || data.nodeCount)}
               />
               <Metric label={t('sources.flow')} value={formatFlow(data.flow)} />
-              <Metric label={t('sources.fetchedAt')} value={formatDate(data.fetchedAt)} />
+              <Metric label={t('sources.expiresAt')} value={formatExpire(data.flow?.expire)} />
               <Metric
                 label={t('common.enabled')}
                 value={data.enabled ? t('common.enabled') : t('common.disabled')}
@@ -476,123 +361,9 @@ export function SourceDetailPage() {
             )}
           </Card>
         </TabsContent>
-
-        {/* 分享管理标签页：解决单源的受限分享需求 */}
-        <TabsContent
-          value="shares"
-          className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto outline-none"
-        >
-          {!directOutput ? (
-            <Card className="p-8 text-center space-y-3">
-              <Share2 className="mx-auto size-8 text-muted-foreground/50" />
-              <div className="space-y-1">
-                <h3 className="text-base font-semibold">尚未开启专属直链</h3>
-                <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                  生成专属直链后，即可为该节点源签发带有有效天数与使用次数限制的临时分享链接。
-                </p>
-              </div>
-              <Button
-                size="sm"
-                onClick={() => generateDirect.mutate()}
-                disabled={generateDirect.isPending}
-              >
-                {generateDirect.isPending ? <Loader2 className="size-4 animate-spin mr-1" /> : null}
-                <span>{t('sources.generateOutput')}</span>
-              </Button>
-            </Card>
-          ) : (
-            <>
-              <CreateShare
-                onSubmit={(body) => createShare.mutate(body)}
-                pending={createShare.isPending}
-              />
-
-              <Card className="overflow-hidden p-0">
-                {shares.data?.length ? (
-                  <div className="divide-y divide-border">
-                    {shares.data.map((share) => {
-                      const absolute = `${window.location.origin}${share.url}`;
-                      return (
-                        <div key={share.id} className="p-3 sm:p-4 space-y-2">
-                          <div className="flex items-center gap-2">
-                            <Link2 className="size-4 shrink-0 text-muted-foreground" />
-                            <span className="min-w-0 flex-1 truncate font-mono text-xs">
-                              {absolute}
-                            </span>
-                            <CopySubscription url={share.url} defaultTarget={directOutput.target} />
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              aria-label={t('outputs.editNote')}
-                              onClick={() => setEditingShare(share)}
-                            >
-                              <Pencil className="size-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              className="text-destructive hover:text-destructive"
-                              aria-label={t('common.delete')}
-                              onClick={() => setDeletingShare(share)}
-                            >
-                              <Trash2 className="size-3.5" />
-                            </Button>
-                          </div>
-
-                          <div className="truncate text-sm font-medium">
-                            {share.note || (
-                              <span className="text-muted-foreground font-normal">
-                                {t('outputs.noNote')}
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                            <span>
-                              {t('outputs.maxUses')}: {share.maxUses || t('common.unlimited')}
-                            </span>
-                            <span>
-                              {t('sources.used')}: {share.usedCount}
-                            </span>
-                            <span>
-                              {t('sources.expire')}:{' '}
-                              {share.expiresAt ? formatDate(share.expiresAt) : t('common.never')}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="py-8 text-center text-sm text-muted-foreground">
-                    {t('outputs.sharesEmpty')}
-                  </div>
-                )}
-              </Card>
-              <p className="text-xs text-muted-foreground">{t('outputs.shareTargetHint')}</p>
-            </>
-          )}
-        </TabsContent>
       </Tabs>
 
       <SourceFormDialog open={editOpen} onOpenChange={setEditOpen} source={data} />
-
-      <EditNoteDialog
-        share={editingShare}
-        onClose={() => setEditingShare(undefined)}
-        onSave={(note) => {
-          if (editingShare) updateNote.mutate({ id: editingShare.id, note });
-        }}
-        pending={updateNote.isPending}
-      />
-      <ConfirmDialog
-        open={!!deletingShare}
-        onOpenChange={(open) => !open && setDeletingShare(undefined)}
-        title={t('outputs.revoke')}
-        onConfirm={() => {
-          if (deletingShare) removeShare.mutate(deletingShare.id);
-        }}
-      />
     </div>
   );
 }
@@ -619,126 +390,5 @@ function Warnings({ items }: { items: string[] }) {
         ))}
       </ul>
     </div>
-  );
-}
-
-function CreateShare({
-  onSubmit,
-  pending,
-}: {
-  onSubmit: (body: { note: string; expiresInDays: number; maxUses: number }) => void;
-  pending: boolean;
-}) {
-  const { t } = useTranslation();
-  const [note, setNote] = useState('');
-  const [expiresInDays, setExpiresInDays] = useState('0');
-  const [maxUses, setMaxUses] = useState('0');
-
-  function handleSubmit() {
-    onSubmit({
-      note: note.trim(),
-      expiresInDays: Number.parseInt(expiresInDays, 10) || 0,
-      maxUses: Number.parseInt(maxUses, 10) || 0,
-    });
-    setNote('');
-    setExpiresInDays('0');
-    setMaxUses('0');
-  }
-
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base">{t('outputs.createShare')}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="space-y-1.5">
-          <Label htmlFor="share-note-src" className="text-xs text-muted-foreground">
-            {t('outputs.shareNote')}
-          </Label>
-          <Input
-            id="share-note-src"
-            maxLength={200}
-            placeholder={t('outputs.shareNotePlaceholder')}
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-          />
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">{t('outputs.expiresInDays')}</Label>
-            <Input
-              type="number"
-              inputMode="numeric"
-              value={expiresInDays}
-              onChange={(event) => setExpiresInDays(event.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">{t('outputs.maxUses')}</Label>
-            <Input
-              type="number"
-              inputMode="numeric"
-              value={maxUses}
-              onChange={(event) => setMaxUses(event.target.value)}
-            />
-          </div>
-        </div>
-      </CardContent>
-      <CardFooter>
-        <Button variant="outline" className="w-full" disabled={pending} onClick={handleSubmit}>
-          {pending ? (
-            <Loader2 className="size-4 animate-spin mr-1" />
-          ) : (
-            <Plus className="size-4 mr-1" />
-          )}
-          {t('outputs.createShare')}
-        </Button>
-      </CardFooter>
-    </Card>
-  );
-}
-
-function EditNoteDialog({
-  share,
-  onClose,
-  onSave,
-  pending,
-}: {
-  share?: ShareDto;
-  onClose: () => void;
-  onSave: (note: string) => void;
-  pending: boolean;
-}) {
-  const { t } = useTranslation();
-  const [note, setNote] = useState(share?.note ?? '');
-
-  useEffect(() => {
-    setNote(share?.note ?? '');
-  }, [share]);
-
-  return (
-    <Dialog open={!!share} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{t('outputs.editNote')}</DialogTitle>
-        </DialogHeader>
-        <div className="py-2">
-          <Input
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-            maxLength={200}
-            placeholder={t('outputs.shareNotePlaceholder')}
-          />
-        </div>
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button disabled={pending} onClick={() => onSave(note.trim())}>
-            {t('common.save')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }

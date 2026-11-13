@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS sources (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
   kind TEXT NOT NULL,
+  token TEXT NOT NULL DEFAULT '',
   url TEXT NOT NULL DEFAULT '',
   flow_url TEXT NOT NULL DEFAULT '',
   user_agent TEXT NOT NULL DEFAULT '',
@@ -64,7 +65,8 @@ CREATE INDEX IF NOT EXISTS output_sources_source_idx ON output_sources(source_id
 
 CREATE TABLE IF NOT EXISTS shares (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  output_id INTEGER NOT NULL REFERENCES outputs(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  target_id INTEGER NOT NULL,
   token TEXT NOT NULL UNIQUE,
   note TEXT NOT NULL DEFAULT '',
   expires_at TEXT,
@@ -72,7 +74,6 @@ CREATE TABLE IF NOT EXISTS shares (
   used_count INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS shares_output_idx ON shares(output_id);
 
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
@@ -92,6 +93,38 @@ export function migrate(): void {
   if (!hasColumn('shares', 'note')) {
     sqlite.exec("ALTER TABLE shares ADD COLUMN note TEXT NOT NULL DEFAULT ''");
   }
+  if (hasColumn('shares', 'output_id') && !hasColumn('shares', 'kind')) {
+    sqlite.exec(`
+      ALTER TABLE shares RENAME TO shares_legacy;
+      CREATE TABLE shares (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind TEXT NOT NULL,
+        target_id INTEGER NOT NULL,
+        token TEXT NOT NULL UNIQUE,
+        note TEXT NOT NULL DEFAULT '',
+        expires_at TEXT,
+        max_uses INTEGER NOT NULL DEFAULT 0,
+        used_count INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      );
+      INSERT INTO shares (id, kind, target_id, token, note, expires_at, max_uses, used_count, created_at)
+        SELECT id, 'output', output_id, token, note, expires_at, max_uses, used_count, created_at
+        FROM shares_legacy;
+      DROP TABLE shares_legacy;
+    `);
+  }
+  sqlite.exec('CREATE INDEX IF NOT EXISTS shares_target_idx ON shares(kind, target_id)');
+  if (!hasColumn('sources', 'token')) {
+    sqlite.exec("ALTER TABLE sources ADD COLUMN token TEXT NOT NULL DEFAULT ''");
+  }
+  const missingSourceTokens = sqlite.prepare("SELECT id FROM sources WHERE token = ''").all() as {
+    id: number;
+  }[];
+  const updateSourceToken = sqlite.prepare('UPDATE sources SET token = ? WHERE id = ?');
+  for (const row of missingSourceTokens) {
+    updateSourceToken.run(randomToken(24), row.id);
+  }
+  sqlite.exec('CREATE UNIQUE INDEX IF NOT EXISTS sources_token_idx ON sources(token)');
   if (!hasColumn('sources', 'processors')) {
     sqlite.exec("ALTER TABLE sources ADD COLUMN processors TEXT NOT NULL DEFAULT '[]'");
   }

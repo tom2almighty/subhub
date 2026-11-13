@@ -8,7 +8,7 @@ import type {
   ProxyNode,
   Target,
 } from '@subhub/shared';
-import { asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { randomToken } from '../auth/password.js';
 import { db } from '../db/index.js';
@@ -37,7 +37,7 @@ function shareCount(outputId: number): number {
   const row = db
     .select({ count: sql<number>`count(*)` })
     .from(shares)
-    .where(eq(shares.outputId, outputId))
+    .where(and(eq(shares.kind, 'output'), eq(shares.targetId, outputId)))
     .get();
   return row?.count ?? 0;
 }

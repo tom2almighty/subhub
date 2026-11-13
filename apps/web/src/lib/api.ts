@@ -87,9 +87,9 @@ export const api = {
       `/api/outputs/${id}/preview${target ? `?target=${encodeURIComponent(target)}` : ''}`,
     ),
 
-  listShares: (outputId: number) => request<ShareDto[]>(`/api/outputs/${outputId}/shares`),
-  createShare: (outputId: number, body: unknown) =>
-    request<ShareDto>(`/api/outputs/${outputId}/shares`, {
+  listShares: () => request<ShareDto[]>('/api/shares'),
+  createShare: (body: unknown) =>
+    request<ShareDto>('/api/shares', {
       method: 'POST',
       body: json(body),
     }),
