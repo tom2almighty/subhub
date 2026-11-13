@@ -71,8 +71,8 @@ function MobileBottomNav() {
   const { t } = useTranslation();
 
   return (
-    <div className="fixed bottom-3 inset-x-0 z-40 flex justify-center px-3 sm:hidden pointer-events-none">
-      <nav className="pointer-events-auto flex items-center gap-1 rounded-full border border-border/80 bg-background/90 p-1.5 shadow-xl backdrop-blur-xl ring-1 ring-black/5 select-none dark:ring-white/10">
+    <div className="fixed bottom-3 inset-x-0 z-40 flex justify-center px-4 sm:hidden pointer-events-none">
+      <nav className="pointer-events-auto flex w-full max-w-md items-center gap-1 rounded-full border border-border/80 bg-background/90 p-1.5 shadow-xl backdrop-blur-xl ring-1 ring-black/5 select-none dark:ring-white/10">
         {NAV.map((item) => {
           const Icon = item.icon;
           return (
@@ -81,7 +81,7 @@ function MobileBottomNav() {
               to={item.to}
               className={({ isActive }) =>
                 cn(
-                  'flex flex-col items-center justify-center gap-1 rounded-full px-2.5 py-1.5 text-xs font-medium leading-none transition-all duration-200 active:scale-95',
+                  'flex flex-1 flex-col items-center justify-center gap-1 rounded-full px-3 py-2 text-xs font-medium leading-none transition-all duration-200 active:scale-95',
                   isActive
                     ? 'bg-foreground text-background shadow-xs font-semibold'
                     : 'text-muted-foreground hover:text-foreground',
@@ -89,7 +89,7 @@ function MobileBottomNav() {
               }
             >
               <Icon className="size-5 shrink-0" />
-              <span>{t(item.key)}</span>
+              <span className="truncate">{t(item.key)}</span>
             </NavLink>
           );
         })}
