@@ -49,7 +49,7 @@ pnpm --filter @subhub/proxy-core exec vitest run test/core.test.ts -t "parses VL
 
 `apps/server/src/app.ts` 是入口编排：cookie、helmet、限流、静态 SPA、路由注册、统一错误格式 `{ code, message }`。所有 `/api/*`（`/api/health`、`/api/auth/login` 除外）先做会话校验；非 GET/HEAD 请求还必须带 `x-subhub-request: 1`，这是前端 `lib/api.ts` 与后端共享的 CSRF 约定，新增前端请求不要绕过 `api.ts`。
 
-订阅路径的前缀保存在 `settings` 表中，默认是 `o` 和 `s`，可在设置页修改。`app.ts` 的 `rewriteUrl` 在路由前把当前前缀重写到内部路由 `/__sub/private/:token`、`/__sub/share/:token`，所以改前缀无需重启，也不要在别处硬编码 `/o/` 或 `/s/`。两条订阅路由不经过 `/api` 钩子：私有路由先按 `outputs.token` 查找，未命中再按 `sources.token`；分享路由按 `shares.kind` 指向 `source` 或 `output`。都接受 `?target=` 临时覆盖输出平台（非法值返回 400），节点源链接不带参数时输出 URI，分享链接只在成功返回后计数。
+订阅路径的前缀保存在 `settings` 表中，默认是 `o` 和 `s`，可在设置页修改。`app.ts` 的 `rewriteUrl` 在路由前把当前前缀重写到内部路由 `/__sub/private/:token`、`/__sub/share/:token`，所以改前缀无需重启，也不要在别处硬编码 `/o/` 或 `/s/`。两条订阅路由不经过 `/api` 钩子：私有路由先按 `outputs.token` 查找，未命中再按 `sources.token`；分享路由按 `shares.kind` 指向 `source` 或 `output`。都接受 `?target=` 临时覆盖输出平台（非法值返回 400）和 `?download=0`（或 `false`）改为 `inline` 响应，默认是附件下载；节点源链接不带参数时输出 URI，分享链接只在成功返回后计数。
 
 ### 数据层
 

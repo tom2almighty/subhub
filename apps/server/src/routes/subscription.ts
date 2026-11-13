@@ -44,12 +44,19 @@ function parseTargetQuery(query: unknown): Target | undefined | null {
   return parsed.success ? parsed.data : null;
 }
 
+function wantsDownload(query: unknown): boolean {
+  const raw = (query as { download?: unknown } | undefined)?.download;
+  if (typeof raw !== 'string') return true;
+  return raw !== '0' && raw.toLowerCase() !== 'false';
+}
+
 function sendSubscription(
   reply: FastifyReply,
   name: string,
   target: Target,
   content: string,
   flowHeader: string | undefined,
+  download: boolean,
 ): void {
   reply
     .header('content-type', CONTENT_TYPES[target])
@@ -57,7 +64,7 @@ function sendSubscription(
     .header('profile-update-interval', '24')
     .header(
       'content-disposition',
-      `attachment; filename="${encodeURIComponent(name)}.${EXTENSIONS[target]}"`,
+      `${download ? 'attachment' : 'inline'}; filename="${encodeURIComponent(name)}.${EXTENSIONS[target]}"`,
     );
   if (flowHeader) reply.header('subscription-userinfo', flowHeader);
   reply.send(content);
@@ -67,6 +74,7 @@ async function sendOutput(
   reply: FastifyReply,
   outputId: number,
   targetOverride: Target | undefined,
+  download: boolean,
 ): Promise<boolean> {
   const built = await buildOutput(outputId, targetOverride);
   if (!built.output.enabled) {
@@ -86,6 +94,7 @@ async function sendOutput(
     built.target,
     built.content,
     toFlowHeader(mergeFlows(linkedFlows)),
+    download,
   );
   return true;
 }
@@ -94,6 +103,7 @@ async function sendSource(
   reply: FastifyReply,
   source: SourceRow,
   targetOverride: Target | undefined,
+  download: boolean,
 ): Promise<boolean> {
   if (!source.enabled) {
     reply.status(404).type('text/plain').send('Not Found');
@@ -106,6 +116,7 @@ async function sendSource(
     built.target,
     built.content,
     toFlowHeader(source.flow ?? null),
+    download,
   );
   return true;
 }
@@ -118,17 +129,18 @@ export default function registerSubscriptionRoutes(app: FastifyInstance): void {
   app.get('/__sub/private/:token', async (request, reply) => {
     const { token } = request.params as { token: string };
     const target = parseTargetQuery(request.query);
+    const download = wantsDownload(request.query);
     if (target === null) {
       return reply.status(400).type('text/plain').send('Unsupported target');
     }
     try {
       const output = tryFindOutput(token);
       if (output) {
-        await sendOutput(reply, output.id, target);
+        await sendOutput(reply, output.id, target, download);
         return;
       }
       const source = findSourceByToken(token);
-      await sendSource(reply, source, target);
+      await sendSource(reply, source, target, download);
     } catch (error) {
       logFailure(request, error, token);
       reply.status(404).type('text/plain').send('Not Found');
@@ -138,6 +150,7 @@ export default function registerSubscriptionRoutes(app: FastifyInstance): void {
   app.get('/__sub/share/:token', async (request, reply) => {
     const { token } = request.params as { token: string };
     const target = parseTargetQuery(request.query);
+    const download = wantsDownload(request.query);
     if (target === null) {
       return reply.status(400).type('text/plain').send('Unsupported target');
     }
@@ -145,8 +158,8 @@ export default function registerSubscriptionRoutes(app: FastifyInstance): void {
       const share = findShare(token);
       const sent =
         share.kind === 'output'
-          ? await sendOutput(reply, share.targetId, target)
-          : await sendSource(reply, findSource(share.targetId), target);
+          ? await sendOutput(reply, share.targetId, target, download)
+          : await sendSource(reply, findSource(share.targetId), target, download);
       if (sent && request.method !== 'HEAD') consumeShare(token);
     } catch (error) {
       logFailure(request, error, token);
