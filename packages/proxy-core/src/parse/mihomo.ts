@@ -1,6 +1,6 @@
 import { PROXY_TYPES, type ProxyNode, type ProxyType } from '@subhub/shared';
 import { parse as parseYaml } from 'yaml';
-import { firstHeaderValue, parseBool, parseIntOrUndefined, splitList } from '../util.js';
+import { parseBool, parseIntOrUndefined, splitList } from '../util.js';
 
 const knownTypes = new Set<string>(PROXY_TYPES);
 
@@ -62,7 +62,7 @@ function normalizeTls(node: ProxyNode, raw: Record<string, any>) {
   }
 }
 
-function normalizeClashProxy(raw: Record<string, any>): ProxyNode {
+function normalizeMihomoProxy(raw: Record<string, any>): ProxyNode {
   const type = `${raw.type ?? ''}`.toLowerCase();
   if (!knownTypes.has(type)) {
     throw new Error(`Unsupported proxy type: ${type}`);
@@ -142,10 +142,10 @@ function normalizeClashProxy(raw: Record<string, any>): ProxyNode {
 
 export function normalizeProxyObject(raw: unknown): ProxyNode {
   if (!isPlainObject(raw)) throw new Error('Proxy entry is not an object');
-  return normalizeClashProxy(raw);
+  return normalizeMihomoProxy(raw);
 }
 
-export function parseClashYaml(text: string): { nodes: ProxyNode[]; warnings: string[] } {
+export function parseMihomoYaml(text: string): { nodes: ProxyNode[]; warnings: string[] } {
   const parsed = parseYaml(text) as unknown;
   return parseStructured(parsed);
 }
@@ -292,18 +292,4 @@ export function parseStructured(value: unknown): { nodes: ProxyNode[]; warnings:
   }
 
   return { nodes, warnings };
-}
-
-export function looksLikeStructured(text: string): boolean {
-  const trimmed = text.trimStart();
-  return (
-    trimmed.startsWith('{') ||
-    trimmed.startsWith('[') ||
-    /^proxies\s*:/m.test(text) ||
-    /^outbounds\s*:/m.test(text)
-  );
-}
-
-export function getFirstHost(value: unknown): string | undefined {
-  return firstHeaderValue(value as Record<string, unknown>, 'host');
 }

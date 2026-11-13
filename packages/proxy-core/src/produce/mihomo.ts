@@ -23,7 +23,7 @@ function withCidr(value: unknown, fallback: string): string | undefined {
   return text.includes('/') ? text : `${text}${fallback}`;
 }
 
-function normalizeForClash(node: ProxyNode): Dict {
+function normalizeForMihomo(node: ProxyNode): Dict {
   const proxy = clean(node) as Dict;
   delete proxy.aead;
 
@@ -74,12 +74,12 @@ function normalizeForClash(node: ProxyNode): Dict {
   return proxy;
 }
 
-export function toClashObject(node: ProxyNode): Dict {
-  return normalizeForClash(node);
+export function toMihomoObject(node: ProxyNode): Dict {
+  return normalizeForMihomo(node);
 }
 
 export function produceMihomo(nodes: ProxyNode[]): string {
-  return stringifyYaml({ proxies: nodes.map(toClashObject) });
+  return stringifyYaml({ proxies: nodes.map(toMihomoObject) });
 }
 
 export function produceStash(nodes: ProxyNode[]): string {

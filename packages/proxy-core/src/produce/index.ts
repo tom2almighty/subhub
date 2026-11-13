@@ -1,7 +1,7 @@
 import type { ProxyNode, Target } from '@subhub/shared';
 import { stringify as stringifyYaml } from 'yaml';
-import { produceJson, toClashObject } from './clash.js';
 import { produceLoonProxy } from './loon.js';
+import { produceJson, toMihomoObject } from './mihomo.js';
 import { produceQxProxy } from './qx.js';
 import { produceSingboxOutbound } from './singbox.js';
 import { produceSurgeProxy } from './surge.js';
@@ -54,7 +54,7 @@ export function produce(nodes: ProxyNode[], target: Target): ProduceResult {
       const proxies: Record<string, unknown>[] = [];
       for (const node of nodes) {
         try {
-          proxies.push(toClashObject(node));
+          proxies.push(toMihomoObject(node));
         } catch (error) {
           warnings.push(`${node.name}: ${(error as Error).message}`);
         }

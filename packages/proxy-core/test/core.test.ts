@@ -4,7 +4,7 @@ import { parse as parseYaml } from 'yaml';
 import {
   applyFlag,
   applyProcessors,
-  parseClashYaml,
+  parseMihomoYaml,
   parseNodes,
   parseUri,
   produce,
@@ -26,7 +26,7 @@ const HY2_URI =
   'hysteria2://secret@example.com:443?sni=example.com&insecure=1' +
   '&obfs=salamander&obfs-password=xyz#HY';
 
-const CLASH_YAML = `
+const MIHOMO_YAML = `
 proxies:
   - name: HY2
     type: hysteria2
@@ -125,9 +125,9 @@ describe('parseUri', () => {
   });
 });
 
-describe('parseClashYaml', () => {
-  it('normalizes Clash proxies', () => {
-    const { nodes, warnings } = parseClashYaml(CLASH_YAML);
+describe('parseMihomoYaml', () => {
+  it('normalizes Mihomo proxies', () => {
+    const { nodes, warnings } = parseMihomoYaml(MIHOMO_YAML);
     expect(warnings).toEqual([]);
     expect(nodes).toHaveLength(2);
     expect(nodes[0]).toMatchObject({
@@ -141,7 +141,7 @@ describe('parseClashYaml', () => {
   });
 
   it('keeps subscription info pseudo-nodes for the filter stage', () => {
-    const { nodes } = parseClashYaml(
+    const { nodes } = parseMihomoYaml(
       'proxies:\n  - name: 剩余流量：10GB\n    type: ss\n    server: x\n    port: 1\n',
     );
     expect(nodes).toHaveLength(1);
@@ -171,7 +171,7 @@ describe('produce', () => {
   });
 
   it('produces Mihomo YAML', () => {
-    const { content, warnings } = produce(parseClashYaml(CLASH_YAML).nodes, 'mihomo');
+    const { content, warnings } = produce(parseMihomoYaml(MIHOMO_YAML).nodes, 'mihomo');
     expect(warnings).toEqual([]);
     const yaml = parseYaml(content) as { proxies: Record<string, unknown>[] };
     expect(yaml.proxies).toHaveLength(2);
@@ -184,7 +184,7 @@ describe('produce', () => {
   });
 
   it('produces sing-box outbounds', () => {
-    const { content, warnings } = produce(parseClashYaml(CLASH_YAML).nodes, 'singbox');
+    const { content, warnings } = produce(parseMihomoYaml(MIHOMO_YAML).nodes, 'singbox');
     expect(warnings).toEqual([]);
     const json = JSON.parse(content) as { outbounds: Record<string, unknown>[] };
     expect(json.outbounds.map((item) => item.type)).toEqual(['hysteria2', 'shadowsocks', 'direct']);
@@ -380,5 +380,84 @@ describe('parseNodes', () => {
     const { nodes, warnings } = parseNodes('unknown://foo');
     expect(nodes).toHaveLength(0);
     expect(warnings).toHaveLength(1);
+  });
+
+  it('parses Surge proxy lines', () => {
+    const { nodes, warnings } = parseNodes(
+      'HK = ss, 1.2.3.4, 8388, encrypt-method=aes-128-gcm, password="pass", udp-relay=true',
+    );
+    expect(warnings).toEqual([]);
+    expect(nodes[0]).toMatchObject({
+      name: 'HK',
+      type: 'ss',
+      server: '1.2.3.4',
+      port: 8388,
+      cipher: 'aes-128-gcm',
+      password: 'pass',
+      udp: true,
+    });
+  });
+
+  it('parses Loon proxy lines with positional credentials', () => {
+    const { nodes, warnings } = parseNodes(
+      'HK = Shadowsocks, 1.2.3.4, 8388, aes-128-gcm, "pass", udp=true',
+    );
+    expect(warnings).toEqual([]);
+    expect(nodes[0]).toMatchObject({
+      name: 'HK',
+      type: 'ss',
+      cipher: 'aes-128-gcm',
+      password: 'pass',
+    });
+  });
+
+  it('parses Quantumult X proxy lines', () => {
+    const { nodes, warnings } = parseNodes(
+      'vless=5.6.7.8:443, method=none, password=uuid, obfs=wss, obfs-uri=/ws, obfs-host=cdn.example.com, tag=WS',
+    );
+    expect(warnings).toEqual([]);
+    expect(nodes[0]).toMatchObject({
+      name: 'WS',
+      type: 'vless',
+      uuid: 'uuid',
+      tls: true,
+      network: 'ws',
+    });
+  });
+
+  it('reads proxy sections from client configs', () => {
+    const surge = parseNodes(
+      '[Proxy]\nHK = ss, 1.2.3.4, 8388, encrypt-method=aes-128-gcm, password=pass\n[Rule]\nFINAL,DIRECT',
+    );
+    expect(surge.warnings).toEqual([]);
+    expect(surge.nodes).toHaveLength(1);
+
+    const qx = parseNodes(
+      '[server_local]\nshadowsocks=1.2.3.4:8388, method=aes-128-gcm, password=pass, tag=HK\n[filter_local]\nGEOIP,CN,DIRECT',
+    );
+    expect(qx.warnings).toEqual([]);
+    expect(qx.nodes).toHaveLength(1);
+    expect(qx.nodes[0]?.name).toBe('HK');
+  });
+
+  it('reports unrecognized content instead of failing silently', () => {
+    const { nodes, warnings } = parseNodes('this is not a subscription');
+    expect(nodes).toHaveLength(0);
+    expect(warnings[0]).toContain('Unrecognized subscription format');
+  });
+
+  it('round-trips the Surge, Loon and QX line formats', () => {
+    const source = parseUri(VLESS_WS);
+    for (const target of ['surge', 'loon', 'qx'] as const) {
+      const { content } = produce([source], target);
+      const parsed = parseNodes(content);
+      expect(parsed.nodes[0]).toMatchObject({
+        type: 'vless',
+        server: '5.6.7.8',
+        port: 443,
+        uuid: '11111111-2222-3333-4444-555555555555',
+        tls: true,
+      });
+    }
   });
 });
