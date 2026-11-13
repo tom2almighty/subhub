@@ -60,7 +60,7 @@ docker compose up -d
 
 The SQLite database lives at `subhub.db` inside the data directory, `/app/data/subhub.db` in the container. Back up the whole data directory before upgrading. The image does not include a reverse proxy; terminate HTTPS in your own environment.
 
-Subscription links come in two forms: a permanent URL for yourself and share links, with default paths `/o/:token` and `/s/:token`. Both prefixes can be changed under Paths in Settings; changes take effect immediately and old links stop working. Both accept `?target=surge`, `?target=mihomo`, `?target=singbox`, and other target values; without the parameter they use the output's default platform.
+Every source and aggregate has its own permanent URL under `/o/:token`. Share links use `/s/:token` and are created from the Shares page for either a source or an aggregate, with an optional note, expiry and usage limit. Both prefixes can be changed under Paths in Settings; changes take effect immediately and old links stop working. Links accept `?target=surge`, `?target=mihomo`, `?target=singbox`, and other target values; sources serve URI by default, while aggregates fall back to their own default platform.
 
 ## License
 

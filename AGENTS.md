@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目范围
 
-subhub 是单用户的代理订阅聚合与转换服务：多个节点源 → 节点处理 → 合并 → 输出处理 → 目标平台配置/订阅，提供私有固定链接 `/o/:token` 与可限量的分享链接 `/s/:token`。
+subhub 是单用户的代理订阅聚合与转换服务：多个节点源 → 节点处理 → 合并 → 输出处理 → 目标平台配置/订阅。每个节点源和聚合订阅都有私有固定链接 `/o/:token`，分享链接 `/s/:token` 可指向节点源或聚合订阅并限量。
 
 - 仅服务端部署（Docker + SQLite），前端是纯 SPA。
 - 移动优先；登录只校验密码，没有用户名。
@@ -49,11 +49,11 @@ pnpm --filter @subhub/proxy-core exec vitest run test/core.test.ts -t "parses VL
 
 `apps/server/src/app.ts` 是入口编排：cookie、helmet、限流、静态 SPA、路由注册、统一错误格式 `{ code, message }`。所有 `/api/*`（`/api/health`、`/api/auth/login` 除外）先做会话校验；非 GET/HEAD 请求还必须带 `x-subhub-request: 1`，这是前端 `lib/api.ts` 与后端共享的 CSRF 约定，新增前端请求不要绕过 `api.ts`。
 
-订阅路径的前缀保存在 `settings` 表中，默认是 `o` 和 `s`，可在设置页修改。`app.ts` 的 `rewriteUrl` 在路由前把当前前缀重写到内部路由 `/__sub/private/:token`、`/__sub/share/:token`，所以改前缀无需重启，也不要在别处硬编码 `/o/` 或 `/s/`。两条订阅路由不经过 `/api` 钩子，分别按 `outputs.token`、`shares.token` 构建订阅；都接受 `?target=` 临时覆盖输出平台，非法值返回 400，分享链接只在成功返回后计数。
+订阅路径的前缀保存在 `settings` 表中，默认是 `o` 和 `s`，可在设置页修改。`app.ts` 的 `rewriteUrl` 在路由前把当前前缀重写到内部路由 `/__sub/private/:token`、`/__sub/share/:token`，所以改前缀无需重启，也不要在别处硬编码 `/o/` 或 `/s/`。两条订阅路由不经过 `/api` 钩子：私有路由先按 `outputs.token` 查找，未命中再按 `sources.token`；分享路由按 `shares.kind` 指向 `source` 或 `output`。都接受 `?target=` 临时覆盖输出平台（非法值返回 400），节点源链接不带参数时输出 URI，分享链接只在成功返回后计数。
 
 ### 数据层
 
-SQLite + Drizzle。`db/schema.ts` 提供 ORM 类型，`db/migrate.ts` 里的 `SCHEMA` 字符串才是实际建表 SQL，两者需要手工保持同步（项目没有 drizzle-kit 迁移目录）。改表时同时处理：更新 schema、更新 SCHEMA、在 `migrate()` 中用 `hasColumn` 做幂等 `ALTER` 并回填历史数据。`settings` 是简单的 key-value 表，保存订阅路径前缀；`settings-service` 在内存中缓存，更新后立即刷新。首次启动且无用户时用 `ADMIN_PASSWORD` 创建唯一用户。
+SQLite + Drizzle。`db/schema.ts` 提供 ORM 类型，`db/migrate.ts` 里的 `SCHEMA` 字符串才是实际建表 SQL，两者需要手工保持同步（项目没有 drizzle-kit 迁移目录）。改表时同时处理：更新 schema、更新 SCHEMA、在 `migrate()` 中用 `hasColumn` 做幂等 `ALTER` 并回填历史数据。`sources` 与 `outputs` 各自持有 `token`；`shares` 用 `kind`（`source`/`output`）+ `target_id` 指向目标，不再绑定单一输出表。`settings` 是简单的 key-value 表，保存订阅路径前缀；`settings-service` 在内存中缓存，更新后立即刷新。首次启动且无用户时用 `ADMIN_PASSWORD` 创建唯一用户。
 
 ### 订阅构建链路
 
@@ -66,7 +66,7 @@ target 会传入每一级处理器。DNS 处理器放在节点源链路，用于
 
 ### proxy-core
 
-- `parse/`：Clash YAML、结构化对象、URI。
+- `parse/`：自动识别 URI 列表、Base64、Mihomo YAML、sing-box JSON，以及 Surge/Loon 行、Quantumult X 行和 `[Proxy]`/`[server_local]`/`[server_remote]` 分节配置。命名统一使用 mihomo。
 - `processors.ts`：过滤、改名、排序、脚本、加节点、旗帜、DNS。
 - `produce/`：Surge、Mihomo/Stash、Loon、Quantumult X、sing-box、URI、JSON。
 
@@ -74,7 +74,7 @@ target 会传入每一级处理器。DNS 处理器放在节点源链路，用于
 
 ### 前端
 
-`App.tsx` 懒加载页面；`RequireAuth` 通过 `/api/auth/me` 判定登录。`AppLayout` 是 `h-svh` 满高外壳，页面遵循 `flex min-h-0 flex-1 flex-col` + 内部滚动的结构；列表用容器查询做多列。组件只用 `components/ui` 中的 shadcn 源码与语义化 Tailwind token。
+`App.tsx` 懒加载页面；`RequireAuth` 通过 `/api/auth/me` 判定登录。`AppLayout` 是 `h-svh` 满高外壳，页面遵循 `flex min-h-0 flex-1 flex-col` + 内部滚动的结构；列表用容器查询做多列。分享链接集中在 `SharesPage` 管理，节点源与聚合详情不再包含分享面板。`ProcessorEditor` 使用 dnd-kit 拖动排序，顺序即处理器执行顺序。组件只用 `components/ui` 中的 shadcn 源码与语义化 Tailwind token。
 
 i18n 默认中文，资源只包含 `zh-CN` 与 `en-US`，`types/i18n.d.ts` 从 `zh-CN.json` 推导 key，新增文案必须同时补两个 JSON。
 
