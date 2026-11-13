@@ -9,23 +9,40 @@ export interface NodeListItem {
   port: number;
 }
 
-export function NodeList({ nodes, className }: { nodes: NodeListItem[]; className?: string }) {
+export function NodeList({
+  nodes,
+  className,
+  columns,
+}: {
+  nodes: NodeListItem[];
+  className?: string;
+  columns?: 1 | 2 | 3;
+}) {
+  const gridColsClass =
+    columns === 1
+      ? 'grid-cols-1'
+      : columns === 2
+        ? 'grid-cols-1 sm:grid-cols-2'
+        : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3';
+
   return (
-    <ul className={cn('grid grid-cols-1 gap-2 @md:grid-cols-2 @3xl:grid-cols-3', className)}>
+    <ul className={cn('grid gap-2', gridColsClass, className)}>
       {nodes.map((node) => (
         <li
           key={`${node.type}-${node.server}-${node.port}-${node.name}`}
-          className="flex min-w-0 items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2 transition-colors hover:bg-muted/50"
+          className="flex min-w-0 items-start justify-between gap-2.5 rounded-lg border border-border bg-card p-2.5 text-xs transition-colors hover:border-foreground/20 hover:bg-accent/40"
         >
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium">{node.name}</div>
-            <div className="mt-0.5 truncate font-mono text-xs tabular-nums text-muted-foreground">
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="break-words text-xs sm:text-sm font-medium text-foreground leading-snug">
+              {node.name}
+            </div>
+            <div className="break-all font-mono text-[11px] tabular-nums text-muted-foreground">
               {node.server}:{node.port}
             </div>
           </div>
           <Badge
-            variant="outline"
-            className="shrink-0 font-mono text-xs uppercase tracking-wide text-muted-foreground"
+            variant="secondary"
+            className="shrink-0 font-mono text-[10px] uppercase font-semibold text-muted-foreground"
           >
             {node.type}
           </Badge>

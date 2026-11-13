@@ -36,11 +36,11 @@ const LANGUAGES = [
   { value: 'en-US', label: 'English' },
 ] as const;
 
-function NavLinks({ mobile = false }: { mobile?: boolean }) {
+function DesktopNav() {
   const { t } = useTranslation();
 
   return (
-    <nav className={cn('items-center gap-1', mobile ? 'flex' : 'hidden sm:flex')}>
+    <nav className="hidden items-center gap-1 sm:flex">
       {NAV.map((item) => {
         const Icon = item.icon;
         return (
@@ -49,11 +49,10 @@ function NavLinks({ mobile = false }: { mobile?: boolean }) {
             to={item.to}
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-2 rounded-md text-sm font-medium transition-colors',
-                mobile ? 'flex-1 justify-center px-3 py-2' : 'px-3 py-1.5',
+                'flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
                 isActive
-                  ? 'bg-muted text-foreground'
-                  : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+                  ? 'bg-secondary text-foreground shadow-xs'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground',
               )
             }
           >
@@ -63,6 +62,37 @@ function NavLinks({ mobile = false }: { mobile?: boolean }) {
         );
       })}
     </nav>
+  );
+}
+
+function MobileBottomNav() {
+  const { t } = useTranslation();
+
+  return (
+    <div className="fixed bottom-4 inset-x-0 z-40 flex justify-center px-4 sm:hidden pointer-events-none">
+      <nav className="pointer-events-auto flex items-center gap-1 rounded-full border border-border/80 bg-background/90 p-1.5 shadow-xl backdrop-blur-xl ring-1 ring-black/5 select-none dark:ring-white/10">
+        {NAV.map((item) => {
+          const Icon = item.icon;
+          return (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium transition-all duration-200 active:scale-95',
+                  isActive
+                    ? 'bg-foreground text-background shadow-xs font-semibold'
+                    : 'text-muted-foreground hover:text-foreground',
+                )
+              }
+            >
+              <Icon className="size-4 shrink-0" />
+              <span>{t(item.key)}</span>
+            </NavLink>
+          );
+        })}
+      </nav>
+    </div>
   );
 }
 
@@ -98,19 +128,23 @@ export function AppLayout() {
   }
 
   return (
-    <div className="flex h-svh flex-col overflow-hidden">
-      <header className="z-30 shrink-0 border-b border-border/60 bg-background/80 backdrop-blur-xl">
-        <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-4 sm:px-6 lg:px-8">
-          <Link to="/sources" className="flex shrink-0 items-center gap-2">
-            <img src="/favicon.svg" alt="" className="size-7 rounded-md" />
-            <span className="text-sm font-semibold tracking-tight">{t('app.name')}</span>
-          </Link>
-
-          <div className="ml-2 hidden sm:block">
-            <NavLinks />
+    <div className="flex h-svh flex-col overflow-hidden bg-background">
+      <header className="sticky top-0 z-30 shrink-0 border-b border-border bg-background/80 backdrop-blur-md">
+        <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-6">
+            <Link
+              to="/sources"
+              className="flex shrink-0 items-center gap-2.5 transition-opacity hover:opacity-90"
+            >
+              <img src="/favicon.svg" alt="" className="size-7 rounded-md shadow-xs" />
+              <span className="text-base font-semibold tracking-tight text-foreground">
+                {t('app.name')}
+              </span>
+            </Link>
+            <DesktopNav />
           </div>
 
-          <div className="ml-auto flex items-center gap-1">
+          <div className="flex items-center gap-1">
             <Button
               variant="ghost"
               size="icon-sm"
@@ -157,23 +191,22 @@ export function AppLayout() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => logout.mutate()} disabled={logout.isPending}>
-                  <LogOut className="size-4" />
-                  {t('auth.logout')}
+                  <LogOut className="size-4 text-destructive" />
+                  <span className="text-destructive">{t('auth.logout')}</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
         </div>
-        <div className="border-t px-3 py-1.5 sm:hidden">
-          <NavLinks mobile />
-        </div>
       </header>
 
-      <main className="min-h-0 flex-1 overflow-hidden">
-        <div className="mx-auto flex h-full w-full max-w-6xl flex-col px-4 py-6 sm:px-6 md:py-8 lg:px-8">
+      <main className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col px-4 pt-4 pb-20 sm:px-6 sm:py-6 sm:pb-8 lg:px-8">
           <Outlet />
         </div>
       </main>
+
+      <MobileBottomNav />
     </div>
   );
 }

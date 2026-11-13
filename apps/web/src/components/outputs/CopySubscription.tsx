@@ -9,6 +9,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
@@ -23,7 +24,7 @@ export function CopySubscription({
   url: string;
   defaultTarget: Target;
   showLabel?: boolean;
-  variant?: 'ghost' | 'outline';
+  variant?: 'ghost' | 'outline' | 'default';
   className?: string;
 }) {
   const { t } = useTranslation();
@@ -48,21 +49,42 @@ export function CopySubscription({
           type="button"
           variant={variant}
           size={showLabel ? 'sm' : 'icon-sm'}
-          className={cn(showLabel && 'gap-1.5', className)}
+          className={cn(showLabel && 'gap-1.5 text-xs sm:text-sm font-medium', className)}
           aria-label={t('outputs.copyUrl')}
           title={showLabel ? undefined : t('outputs.copyUrl')}
         >
-          {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+          {copied ? (
+            <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+          ) : (
+            <Copy className="size-3.5" />
+          )}
           {showLabel ? <span>{t('outputs.copyUrl')}</span> : null}
-          {showLabel ? <ChevronDown className="size-3.5 text-muted-foreground" /> : null}
+          {showLabel ? (
+            <ChevronDown className="size-3 text-muted-foreground transition-transform" />
+          ) : null}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-auto">
-        <DropdownMenuLabel>{t('outputs.platform')}</DropdownMenuLabel>
-        {TARGETS.map((target) => (
-          <DropdownMenuItem key={target} onSelect={() => void copy(target)}>
-            <span className="whitespace-nowrap">{TARGET_LABELS[target]}</span>
-            {target === defaultTarget ? <Check className="ml-auto size-4" /> : null}
+      <DropdownMenuContent align="end" className="w-52 p-1.5 shadow-lg">
+        <DropdownMenuLabel className="px-2 py-1.5 text-xs text-muted-foreground font-normal">
+          {t('outputs.platform')}
+        </DropdownMenuLabel>
+        <DropdownMenuItem
+          className="flex cursor-pointer items-center justify-between py-2 text-sm font-medium"
+          onSelect={() => void copy(defaultTarget)}
+        >
+          <span>{TARGET_LABELS[defaultTarget]}</span>
+          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+            {t('common.default', '默认')}
+          </span>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        {TARGETS.filter((item) => item !== defaultTarget).map((target) => (
+          <DropdownMenuItem
+            key={target}
+            className="flex cursor-pointer items-center justify-between py-2 text-sm"
+            onSelect={() => void copy(target)}
+          >
+            <span>{TARGET_LABELS[target]}</span>
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

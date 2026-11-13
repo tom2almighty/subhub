@@ -1,6 +1,15 @@
 import type { SourceDto } from '@subhub/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { MoreHorizontal, Plus, RefreshCw, Server } from 'lucide-react';
+import {
+  Activity,
+  AlertCircle,
+  Clock,
+  MoreHorizontal,
+  Plus,
+  RefreshCw,
+  Send,
+  Server,
+} from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
@@ -8,6 +17,7 @@ import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { EmptyState } from '@/components/common/EmptyState';
 import { PageHeader } from '@/components/common/PageHeader';
+import { CopySubscription } from '@/components/outputs/CopySubscription';
 import { SourceFormDialog } from '@/components/sources/SourceFormDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,11 +26,13 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { api } from '@/lib/api';
 import { formatDate, formatFlow } from '@/lib/format';
+import { cn } from '@/lib/utils';
 
 export function SourcesPage() {
   const { t } = useTranslation();
@@ -30,6 +42,7 @@ export function SourcesPage() {
   const [deleting, setDeleting] = useState<SourceDto | undefined>();
 
   const sources = useQuery({ queryKey: ['sources'], queryFn: api.listSources });
+  const outputs = useQuery({ queryKey: ['outputs'], queryFn: api.listOutputs });
   const totalNodes = sources.data?.reduce((sum, source) => sum + source.nodeCount, 0) ?? 0;
 
   const refresh = useMutation({
@@ -38,6 +51,21 @@ export function SourcesPage() {
       void queryClient.invalidateQueries({ queryKey: ['sources'] });
       void queryClient.invalidateQueries({ queryKey: ['source', source.id] });
       toast.success(t('common.refresh'));
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const generateDirect = useMutation({
+    mutationFn: (source: SourceDto) =>
+      api.createOutput({
+        name: source.name,
+        target: 'surge',
+        sourceIds: [source.id],
+        enabled: true,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['outputs'] });
+      toast.success(t('sources.generateOutputSuccess'));
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -72,82 +100,156 @@ export function SourcesPage() {
             }}
           >
             <Plus className="size-4" />
-            <span className="hidden sm:inline">{t('sources.new')}</span>
+            <span>{t('sources.new')}</span>
           </Button>
         }
       />
 
       {sources.isLoading ? (
-        <div className="space-y-2">
-          <Skeleton className="h-20 w-full rounded-xl" />
-          <Skeleton className="h-20 w-full rounded-xl" />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Skeleton className="h-28 w-full rounded-xl" />
+          <Skeleton className="h-28 w-full rounded-xl" />
+          <Skeleton className="h-28 w-full rounded-xl" />
         </div>
       ) : sources.data?.length ? (
-        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
-          {sources.data.map((source) => (
-            <Card
-              key={source.id}
-              className="flex flex-row items-start gap-2 px-4 py-3 transition-colors hover:bg-muted/30"
-            >
-              <Link to={`/sources/${source.id}`} className="flex min-w-0 flex-1 items-start">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="truncate text-sm font-medium">{source.name}</span>
-                    <Badge variant={source.kind === 'remote' ? 'secondary' : 'outline'}>
-                      {source.kind === 'remote' ? t('sources.remote') : t('sources.manual')}
-                    </Badge>
-                    {!source.enabled ? (
-                      <Badge variant="outline" className="text-muted-foreground">
-                        {t('common.disabled')}
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-0.5">
+          {sources.data.map((source) => {
+            const isRefreshing = refresh.isPending && refresh.variables === source.id;
+            const directOutput = outputs.data?.find(
+              (o) => o.sourceIds.length === 1 && o.sourceIds[0] === source.id,
+            );
+
+            return (
+              <Card
+                key={source.id}
+                className="group relative overflow-hidden transition-all hover:border-foreground/20 hover:shadow-sm"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 gap-3">
+                  <Link
+                    to={`/sources/${source.id}`}
+                    className="flex-1 min-w-0 space-y-2.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-md"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="truncate text-base font-medium text-foreground group-hover:text-primary transition-colors">
+                        {source.name}
+                      </span>
+                      <Badge variant={source.kind === 'remote' ? 'secondary' : 'outline'}>
+                        {source.kind === 'remote' ? t('sources.remote') : t('sources.manual')}
                       </Badge>
+                      {!source.enabled ? (
+                        <Badge variant="outline" className="text-muted-foreground border-dashed">
+                          {t('common.disabled')}
+                        </Badge>
+                      ) : null}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1.5 font-medium text-foreground/80">
+                        <Server className="size-3.5 text-muted-foreground" />
+                        <span>{t('sources.nodeCount', { count: source.nodeCount })}</span>
+                      </div>
+                      {source.flow ? (
+                        <div className="flex items-center gap-1.5">
+                          <Activity className="size-3.5 text-muted-foreground" />
+                          <span>
+                            {t('sources.flow')}: {formatFlow(source.flow)}
+                          </span>
+                        </div>
+                      ) : null}
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="size-3.5 text-muted-foreground" />
+                        <span>{formatDate(source.fetchedAt)}</span>
+                      </div>
+                    </div>
+
+                    {source.lastError ? (
+                      <div className="mt-2 flex items-start gap-1.5 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
+                        <AlertCircle className="size-3.5 shrink-0 mt-0.5" />
+                        <span className="line-clamp-2 leading-relaxed">{source.lastError}</span>
+                      </div>
                     ) : null}
+                  </Link>
+
+                  <div className="flex items-center justify-end gap-1.5 shrink-0 pt-2 sm:pt-0 border-t border-border/40 sm:border-t-0">
+                    {directOutput ? (
+                      <CopySubscription
+                        url={directOutput.url}
+                        defaultTarget={directOutput.target}
+                        variant="outline"
+                        showLabel
+                      />
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs text-muted-foreground hover:text-foreground"
+                        onClick={() => generateDirect.mutate(source)}
+                        disabled={generateDirect.isPending}
+                        title={t('sources.generateOutput')}
+                      >
+                        <Send className="size-3.5 mr-1" />
+                        <span>{t('sources.generateOutput')}</span>
+                      </Button>
+                    )}
+
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => refresh.mutate(source.id)}
+                      disabled={isRefreshing}
+                      title={t('sources.refreshNow')}
+                      aria-label={t('sources.refreshNow')}
+                    >
+                      <RefreshCw className={cn('size-3.5', isRefreshing && 'animate-spin')} />
+                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon-sm" aria-label={t('common.actions')}>
+                          <MoreHorizontal className="size-3.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-44">
+                        <DropdownMenuItem
+                          onClick={() => refresh.mutate(source.id)}
+                          disabled={isRefreshing}
+                        >
+                          <RefreshCw className="size-4" />
+                          {t('sources.refreshNow')}
+                        </DropdownMenuItem>
+                        {!directOutput ? (
+                          <DropdownMenuItem
+                            onClick={() => generateDirect.mutate(source)}
+                            disabled={generateDirect.isPending}
+                          >
+                            <Send className="size-4" />
+                            {t('sources.generateOutput')}
+                          </DropdownMenuItem>
+                        ) : null}
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setEditing(source);
+                            setFormOpen(true);
+                          }}
+                        >
+                          {t('common.edit')}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => setDeleting(source)}
+                        >
+                          {t('common.delete')}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
-                  <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                    <span>{t('sources.nodeCount', { count: source.nodeCount })}</span>
-                    <span>
-                      {t('sources.flow')}: {formatFlow(source.flow)}
-                    </span>
-                    <span>
-                      {t('sources.fetchedAt')}: {formatDate(source.fetchedAt)}
-                    </span>
-                  </div>
-                  {source.lastError ? (
-                    <p className="mt-2 line-clamp-2 text-xs text-destructive">{source.lastError}</p>
-                  ) : null}
                 </div>
-              </Link>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" aria-label={t('common.actions')}>
-                    <MoreHorizontal className="size-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => refresh.mutate(source.id)}>
-                    <RefreshCw className="size-4" />
-                    {t('sources.refreshNow')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => {
-                      setEditing(source);
-                      setFormOpen(true);
-                    }}
-                  >
-                    {t('common.edit')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="text-destructive"
-                    onClick={() => setDeleting(source)}
-                  >
-                    {t('common.delete')}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
         </div>
       ) : (
-        <Card className="flex min-h-0 flex-1 items-center justify-center py-0">
+        <Card className="flex min-h-[300px] flex-1 items-center justify-center p-8">
           <EmptyState
             icon={Server}
             title={t('sources.empty')}

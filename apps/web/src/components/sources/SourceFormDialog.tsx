@@ -40,6 +40,7 @@ const formSchema = z.object({
   refreshInterval: z.coerce.number().int().min(0).max(10080),
   noFlow: z.boolean(),
   enabled: z.boolean(),
+  autoCreateOutput: z.boolean(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -70,6 +71,7 @@ export function SourceFormDialog({
       refreshInterval: 60,
       noFlow: false,
       enabled: true,
+      autoCreateOutput: true,
     },
   });
 
@@ -86,6 +88,7 @@ export function SourceFormDialog({
       refreshInterval: source?.refreshInterval ?? 60,
       noFlow: source?.noFlow ?? false,
       enabled: source?.enabled ?? true,
+      autoCreateOutput: true,
     });
   }, [form, open, source]);
 
@@ -117,10 +120,37 @@ export function SourceFormDialog({
         noFlow: values.noFlow,
         enabled: values.enabled,
       };
-      return source ? api.updateSource(source.id, body) : api.createSource(body);
+
+      const saved = source ? await api.updateSource(source.id, body) : await api.createSource(body);
+
+      if (!source && values.autoCreateOutput && saved?.id) {
+        try {
+          await api.createOutput({
+            name: saved.name,
+            target: 'surge',
+            sourceIds: [saved.id],
+            enabled: true,
+          });
+        } catch {
+          // If output name collision occurs, try with a suffix
+          try {
+            await api.createOutput({
+              name: `${saved.name} (Direct)`,
+              target: 'surge',
+              sourceIds: [saved.id],
+              enabled: true,
+            });
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      return saved;
     },
     onSuccess: (saved) => {
       void queryClient.invalidateQueries({ queryKey: ['sources'] });
+      void queryClient.invalidateQueries({ queryKey: ['outputs'] });
       if (saved.id) void queryClient.invalidateQueries({ queryKey: ['source', saved.id] });
       toast.success(source ? t('common.save') : t('sources.new'));
       onOpenChange(false);
@@ -233,6 +263,25 @@ export function SourceFormDialog({
               onCheckedChange={(checked) => form.setValue('enabled', checked)}
             />
           </div>
+
+          {!source ? (
+            <div className="flex items-center justify-between rounded-md border bg-muted/30 p-3">
+              <div className="space-y-0.5 pr-2">
+                <Label htmlFor="source-auto-output" className="text-sm font-medium cursor-pointer">
+                  {t('sources.autoCreateOutput')}
+                </Label>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  {t('sources.autoCreateOutputHint')}
+                </p>
+              </div>
+              <Switch
+                id="source-auto-output"
+                checked={form.watch('autoCreateOutput')}
+                onCheckedChange={(checked) => form.setValue('autoCreateOutput', checked)}
+              />
+            </div>
+          ) : null}
+
           <DialogFooter>
             <Button
               type="button"
@@ -243,8 +292,8 @@ export function SourceFormDialog({
               {t('common.cancel')}
             </Button>
             <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : null}
-              {t('common.save')}
+              {mutation.isPending ? <Loader2 className="size-4 animate-spin mr-1" /> : null}
+              {source ? t('common.save') : t('common.create')}
             </Button>
           </DialogFooter>
         </form>

@@ -9,6 +9,7 @@ import {
   Loader2,
   Pencil,
   Plus,
+  RotateCcw,
   Save,
   Trash2,
 } from 'lucide-react';
@@ -23,6 +24,7 @@ import { NodeList } from '@/components/nodes/NodeList';
 import { CopySubscription } from '@/components/outputs/CopySubscription';
 import { OutputFormDialog } from '@/components/outputs/OutputFormDialog';
 import { ProcessorEditor } from '@/components/outputs/ProcessorEditor';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -108,6 +110,7 @@ export function OutputDetailPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['shares', outputId] });
       void queryClient.invalidateQueries({ queryKey: ['outputs'] });
+      toast.success(t('common.save'));
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -128,16 +131,28 @@ export function OutputDetailPage() {
       void queryClient.invalidateQueries({ queryKey: ['shares', outputId] });
       void queryClient.invalidateQueries({ queryKey: ['outputs'] });
       setDeletingShare(undefined);
+      toast.success(t('common.delete'));
     },
     onError: (error: Error) => toast.error(error.message),
   });
 
-  if (output.isLoading) return <Skeleton className="h-40 w-full" />;
+  if (output.isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-8 w-24" />
+        <Skeleton className="h-20 w-full rounded-xl" />
+        <Skeleton className="h-64 w-full rounded-xl" />
+      </div>
+    );
+  }
+
   if (!output.data) {
     return (
-      <Link to="/outputs" className="text-sm underline">
-        {t('common.back')}
-      </Link>
+      <div className="py-12 text-center">
+        <Link to="/outputs" className="text-sm font-medium underline underline-offset-4">
+          {t('common.back')}
+        </Link>
+      </div>
     );
   }
 
@@ -158,151 +173,169 @@ export function OutputDetailPage() {
     setDirty(true);
   }
 
+  function handleReset() {
+    if (!output.data) return;
+    setProcessors(output.data.processors);
+    setSourceIds(output.data.sourceIds);
+    setDirty(false);
+  }
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-3 shrink-0">
-        <Button asChild variant="ghost" size="sm" className="-ml-2">
+    <div className="relative flex min-h-0 flex-1 flex-col pb-12">
+      <div className="mb-2 shrink-0">
+        <Button
+          asChild
+          variant="ghost"
+          size="sm"
+          className="-ml-2 text-muted-foreground hover:text-foreground"
+        >
           <Link to="/outputs">
-            <ArrowLeft className="size-4" />
+            <ArrowLeft className="size-4 mr-1" />
             {t('common.back')}
           </Link>
         </Button>
       </div>
+
       <PageHeader
         title={data.name}
-        description={`${t('outputs.defaultTarget')}: ${TARGET_LABELS[data.target]} · ${t(
-          'outputs.sources',
-        )} ${data.sources.length}`}
+        description={`${t('outputs.defaultTarget')}: ${TARGET_LABELS[data.target]} · ${t('outputs.sources')} (${data.sources.length})`}
         action={
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              aria-label={t('outputs.preview')}
               onClick={() => preview.mutate(activePreviewTarget)}
               disabled={preview.isPending}
             >
               {preview.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
+                <Loader2 className="size-3.5 animate-spin mr-1" />
               ) : (
-                <Eye className="size-4" />
+                <Eye className="size-3.5 mr-1" />
               )}
-              <span className="hidden sm:inline">{t('outputs.preview')}</span>
+              <span>{t('outputs.preview')}</span>
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              aria-label={t('common.edit')}
-              onClick={() => setEditOpen(true)}
-            >
-              <Pencil className="size-4" />
-              <span className="hidden sm:inline">{t('common.edit')}</span>
+            <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+              <Pencil className="size-3.5 mr-1" />
+              <span>{t('common.edit')}</span>
             </Button>
           </div>
         }
       />
 
-      <Tabs defaultValue="preview" className="min-h-0 flex-1">
-        <TabsList className="w-full shrink-0 sm:w-fit">
-          <TabsTrigger value="preview" className="flex-1 sm:flex-none sm:px-4">
+      <Tabs defaultValue="preview" className="min-h-0 flex-1 flex flex-col">
+        <TabsList className="w-full shrink-0 grid grid-cols-4 sm:w-fit sm:inline-flex">
+          <TabsTrigger value="preview" className="text-xs sm:text-sm px-2 sm:px-4">
             {t('outputs.preview')}
           </TabsTrigger>
-          <TabsTrigger value="processors" className="flex-1 sm:flex-none sm:px-4">
+          <TabsTrigger value="processors" className="text-xs sm:text-sm px-2 sm:px-4">
             {t('outputs.processors')}
           </TabsTrigger>
-          <TabsTrigger value="sources" className="flex-1 sm:flex-none sm:px-4">
+          <TabsTrigger value="sources" className="text-xs sm:text-sm px-2 sm:px-4">
             {t('outputs.sources')}
           </TabsTrigger>
-          <TabsTrigger value="shares" className="flex-1 sm:flex-none sm:px-4">
+          <TabsTrigger value="shares" className="text-xs sm:text-sm px-2 sm:px-4">
             {t('outputs.links')}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent
           value="preview"
-          className="mt-4 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto lg:overflow-hidden"
+          className="mt-4 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto outline-none"
         >
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-lg border bg-card/60 p-2.5">
             <p className="text-xs text-muted-foreground">{t('outputs.previewHint')}</p>
-            <Select
-              value={activePreviewTarget}
-              onValueChange={(value) => {
-                const target = value as Target;
-                setPreviewTarget(target);
-                if (preview.data) preview.mutate(target);
-              }}
-            >
-              <SelectTrigger className="h-8 w-40" aria-label={t('outputs.previewTarget')}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {TARGETS.map((target) => (
-                  <SelectItem key={target} value={target}>
-                    {TARGET_LABELS[target]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground hidden sm:inline">
+                {t('outputs.previewTarget')}:
+              </span>
+              <Select
+                value={activePreviewTarget}
+                onValueChange={(value) => {
+                  const target = value as Target;
+                  setPreviewTarget(target);
+                  if (preview.data) preview.mutate(target);
+                }}
+              >
+                <SelectTrigger className="h-8 w-36 text-xs" aria-label={t('outputs.previewTarget')}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TARGETS.map((target) => (
+                    <SelectItem key={target} value={target}>
+                      {TARGET_LABELS[target]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+
           {preview.data ? (
             <>
               {preview.data.warnings.length > 0 ? (
-                <div className="shrink-0 border-l-2 border-destructive pl-3">
-                  <div className="text-xs font-medium text-destructive">
-                    {t('outputs.warnings')}
-                  </div>
-                  <ul className="mt-1 space-y-1 text-xs text-destructive">
+                <div className="shrink-0 rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-destructive">
+                  <div className="text-xs font-semibold">{t('outputs.warnings')}</div>
+                  <ul className="mt-1 space-y-1 text-xs">
                     {preview.data.warnings.map((warning) => (
-                      <li key={warning}>{warning}</li>
+                      <li key={warning}>• {warning}</li>
                     ))}
                   </ul>
                 </div>
               ) : null}
-              <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-5">
-                <Card className="flex min-w-0 flex-col gap-0 lg:col-span-3 lg:min-h-0">
-                  <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
-                    <CardTitle className="text-xs font-normal text-muted-foreground">
+
+              <div className="grid gap-4 lg:grid-cols-5">
+                <Card className="flex flex-col lg:col-span-3">
+                  <CardHeader className="flex flex-row items-center justify-between py-3 border-b border-border/60">
+                    <CardTitle className="text-xs font-medium text-muted-foreground">
                       {t('outputs.generatedNodes')} ({preview.data.count})
                     </CardTitle>
                     <CopyButton value={preview.data.content} size="sm" variant="outline" />
                   </CardHeader>
-                  <CardContent className="min-w-0 min-h-0 lg:flex-1">
-                    <pre className="h-72 overflow-auto rounded-md bg-muted/40 p-3 font-mono text-xs lg:h-full">
+                  <CardContent className="p-3">
+                    <pre className="max-h-96 min-h-48 overflow-auto rounded-md bg-muted/40 p-3 font-mono text-xs leading-relaxed">
                       {preview.data.content}
                     </pre>
                   </CardContent>
                 </Card>
-                <Card className="flex min-w-0 flex-col gap-0 lg:col-span-2 lg:min-h-0">
-                  <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
-                    <CardTitle className="text-xs font-normal text-muted-foreground">
+
+                <Card className="flex flex-col lg:col-span-2">
+                  <CardHeader className="flex flex-row items-center justify-between py-3 border-b border-border/60">
+                    <CardTitle className="text-xs font-medium text-muted-foreground">
                       {t('outputs.nodeList')}
                     </CardTitle>
-                    <span className="text-xs text-muted-foreground tabular-nums">
+                    <Badge variant="secondary" className="text-xs tabular-nums font-normal">
                       {preview.data.count}
-                    </span>
+                    </Badge>
                   </CardHeader>
-                  <CardContent className="@container min-w-0 min-h-0 lg:flex-1 lg:overflow-hidden">
-                    <NodeList
-                      nodes={preview.data.nodes}
-                      className="max-h-72 overflow-y-auto p-3 lg:h-full lg:max-h-none"
-                    />
+                  <CardContent className="p-3">
+                    <NodeList nodes={preview.data.nodes} className="max-h-96 overflow-y-auto" />
                   </CardContent>
                 </Card>
               </div>
             </>
           ) : (
-            <Card className="flex min-h-0 flex-1 items-center justify-center py-0">
-              <p className="py-12 text-center text-sm text-muted-foreground">
-                {t('outputs.previewEmpty')}
-              </p>
+            <Card className="flex min-h-[220px] flex-1 items-center justify-center p-6 text-center">
+              <div className="space-y-2">
+                <Eye className="mx-auto size-8 text-muted-foreground/50" />
+                <p className="text-sm text-muted-foreground">{t('outputs.previewEmpty')}</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => preview.mutate(activePreviewTarget)}
+                  disabled={preview.isPending}
+                >
+                  {preview.isPending ? <Loader2 className="size-3.5 animate-spin mr-1" /> : null}
+                  {t('outputs.preview')}
+                </Button>
+              </div>
             </Card>
           )}
         </TabsContent>
 
-        <TabsContent value="processors" className="mt-4 flex min-h-0 flex-1 flex-col">
+        <TabsContent value="processors" className="mt-4 flex min-h-0 flex-1 flex-col outline-none">
           <div className="shrink-0 pb-3">
-            <h2 className="text-sm font-medium">{t('outputs.processors')}</h2>
-            <p className="mt-1 text-xs text-muted-foreground">{t('outputs.processorsHint')}</p>
+            <h2 className="text-sm font-semibold">{t('outputs.processors')}</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">{t('outputs.processorsHint')}</p>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto pr-1">
             <ProcessorEditor
@@ -313,62 +346,65 @@ export function OutputDetailPage() {
               }}
             />
           </div>
-          {dirty ? (
-            <div className="mt-3 flex shrink-0 justify-end border-t pt-3">
-              <Button onClick={() => save.mutate()} disabled={save.isPending}>
-                <Save className="size-4" />
-                {t('common.save')}
-              </Button>
-            </div>
-          ) : null}
         </TabsContent>
 
-        <TabsContent value="sources" className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
-          <Card className="gap-0 overflow-hidden py-0">
+        <TabsContent
+          value="sources"
+          className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto outline-none"
+        >
+          <Card className="overflow-hidden p-0">
             {selectedSources.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
                 {t('outputs.noSources')}
               </p>
             ) : (
-              <div className="divide-y divide-border/60">
+              <div className="divide-y divide-border">
                 {selectedSources.map((source, index) => (
-                  <div key={source.id} className="flex items-center gap-2 px-4 py-2.5">
-                    <span className="min-w-0 flex-1 truncate text-sm">{source.name}</span>
-                    <span className="text-xs text-muted-foreground">{source.nodeCount}</span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-8"
-                      onClick={() => moveSource(index, -1)}
-                      disabled={index === 0}
-                    >
-                      <ArrowUp className="size-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-8"
-                      onClick={() => moveSource(index, 1)}
-                      disabled={index === selectedSources.length - 1}
-                    >
-                      <ArrowDown className="size-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-8 text-destructive"
-                      onClick={() => {
-                        setSourceIds(sourceIds.filter((item) => item !== source.id));
-                        setDirty(true);
-                      }}
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
+                  <div key={source.id} className="flex items-center gap-2 p-3 sm:px-4">
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                      {source.name}
+                    </span>
+                    <Badge variant="outline" className="text-xs text-muted-foreground">
+                      {source.nodeCount}
+                    </Badge>
+                    <div className="flex items-center gap-0.5">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => moveSource(index, -1)}
+                        disabled={index === 0}
+                        title="Up"
+                      >
+                        <ArrowUp className="size-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => moveSource(index, 1)}
+                        disabled={index === selectedSources.length - 1}
+                        title="Down"
+                      >
+                        <ArrowDown className="size-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => {
+                          setSourceIds(sourceIds.filter((item) => item !== source.id));
+                          setDirty(true);
+                        }}
+                        title={t('common.delete')}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
           </Card>
+
           {availableSources.length > 0 ? (
             <AddSource
               sources={availableSources}
@@ -378,27 +414,22 @@ export function OutputDetailPage() {
               }}
             />
           ) : null}
-          {dirty ? (
-            <div className="flex justify-end">
-              <Button onClick={() => save.mutate()} disabled={save.isPending}>
-                <Save className="size-4" />
-                {t('common.save')}
-              </Button>
-            </div>
-          ) : null}
         </TabsContent>
 
-        <TabsContent value="shares" className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
-          <Card className="gap-0">
+        <TabsContent
+          value="shares"
+          className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto outline-none"
+        >
+          <Card>
             <CardHeader className="pb-3">
-              <CardTitle>{t('outputs.myLink')}</CardTitle>
+              <CardTitle className="text-base">{t('outputs.myLink')}</CardTitle>
               <CardDescription>{t('outputs.myLinkHint')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border bg-muted/20 px-3 py-2">
+                <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
                   <Link2 className="size-4 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
                     {window.location.origin}
                     {data.url}
                   </span>
@@ -407,7 +438,7 @@ export function OutputDetailPage() {
                   url={data.url}
                   defaultTarget={data.target}
                   showLabel
-                  variant="outline"
+                  variant="default"
                   className="w-full sm:w-auto"
                 />
               </div>
@@ -419,13 +450,14 @@ export function OutputDetailPage() {
             onSubmit={(body) => createShare.mutate(body)}
             pending={createShare.isPending}
           />
-          <Card className="gap-0 overflow-hidden py-0">
+
+          <Card className="overflow-hidden p-0">
             {shares.data?.length ? (
-              <div className="divide-y divide-border/60">
+              <div className="divide-y divide-border">
                 {shares.data.map((share) => {
                   const absolute = `${window.location.origin}${share.url}`;
                   return (
-                    <div key={share.id} className="px-4 py-3">
+                    <div key={share.id} className="p-3 sm:p-4 space-y-2">
                       <div className="flex items-center gap-2">
                         <Link2 className="size-4 shrink-0 text-muted-foreground" />
                         <span className="min-w-0 flex-1 truncate font-mono text-xs">
@@ -434,29 +466,32 @@ export function OutputDetailPage() {
                         <CopySubscription url={share.url} defaultTarget={data.target} />
                         <Button
                           variant="ghost"
-                          size="icon"
-                          className="size-8"
+                          size="icon-sm"
                           aria-label={t('outputs.editNote')}
                           onClick={() => setEditingShare(share)}
                         >
-                          <Pencil className="size-4" />
+                          <Pencil className="size-3.5" />
                         </Button>
                         <Button
                           variant="ghost"
-                          size="icon"
-                          className="size-8 text-destructive"
+                          size="icon-sm"
+                          className="text-destructive hover:text-destructive"
                           aria-label={t('common.delete')}
                           onClick={() => setDeletingShare(share)}
                         >
-                          <Trash2 className="size-4" />
+                          <Trash2 className="size-3.5" />
                         </Button>
                       </div>
-                      <div className="mt-2 truncate text-sm">
+
+                      <div className="truncate text-sm font-medium">
                         {share.note || (
-                          <span className="text-muted-foreground">{t('outputs.noNote')}</span>
+                          <span className="text-muted-foreground font-normal">
+                            {t('outputs.noNote')}
+                          </span>
                         )}
                       </div>
-                      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                         <span>
                           {t('outputs.maxUses')}: {share.maxUses || t('common.unlimited')}
                         </span>
@@ -473,7 +508,7 @@ export function OutputDetailPage() {
                 })}
               </div>
             ) : (
-              <div className="py-6 text-center text-sm text-muted-foreground">
+              <div className="py-8 text-center text-sm text-muted-foreground">
                 {t('outputs.sharesEmpty')}
               </div>
             )}
@@ -481,6 +516,39 @@ export function OutputDetailPage() {
           <p className="text-xs text-muted-foreground">{t('outputs.shareTargetHint')}</p>
         </TabsContent>
       </Tabs>
+
+      {/* Floating Save Bar for mobile and desktop */}
+      {dirty ? (
+        <div className="fixed bottom-16 sm:bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-full border border-border bg-background/95 px-4 py-2.5 shadow-lg backdrop-blur-md transition-all animate-in fade-in slide-in-from-bottom-3">
+          <span className="text-xs sm:text-sm font-medium text-foreground whitespace-nowrap">
+            {t('common.unsavedChanges', '有未保存的改动')}
+          </span>
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+              onClick={handleReset}
+            >
+              <RotateCcw className="size-3 mr-1" />
+              {t('common.reset', '重置')}
+            </Button>
+            <Button
+              size="sm"
+              className="h-7 px-3 text-xs"
+              onClick={() => save.mutate()}
+              disabled={save.isPending}
+            >
+              {save.isPending ? (
+                <Loader2 className="size-3 animate-spin mr-1" />
+              ) : (
+                <Save className="size-3 mr-1" />
+              )}
+              {t('common.save')}
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       <OutputFormDialog
         open={editOpen}
@@ -545,7 +613,8 @@ function AddSource({
           }
         }}
       >
-        <Plus className="size-4" />
+        <Plus className="size-4 mr-1" />
+        <span>{t('common.add', '添加')}</span>
       </Button>
     </div>
   );
@@ -562,13 +631,25 @@ function CreateShare({
   const [note, setNote] = useState('');
   const [expiresInDays, setExpiresInDays] = useState('0');
   const [maxUses, setMaxUses] = useState('0');
+
+  function handleSubmit() {
+    onSubmit({
+      note: note.trim(),
+      expiresInDays: Number.parseInt(expiresInDays, 10) || 0,
+      maxUses: Number.parseInt(maxUses, 10) || 0,
+    });
+    setNote('');
+    setExpiresInDays('0');
+    setMaxUses('0');
+  }
+
   return (
-    <Card className="gap-0">
+    <Card>
       <CardHeader className="pb-3">
-        <CardTitle>{t('outputs.createShare')}</CardTitle>
+        <CardTitle className="text-base">{t('outputs.createShare')}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           <Label htmlFor="share-note" className="text-xs text-muted-foreground">
             {t('outputs.shareNote')}
           </Label>
@@ -581,7 +662,7 @@ function CreateShare({
           />
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">{t('outputs.expiresInDays')}</Label>
             <Input
               type="number"
@@ -590,7 +671,7 @@ function CreateShare({
               onChange={(event) => setExpiresInDays(event.target.value)}
             />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">{t('outputs.maxUses')}</Label>
             <Input
               type="number"
@@ -602,19 +683,12 @@ function CreateShare({
         </div>
       </CardContent>
       <CardFooter>
-        <Button
-          variant="outline"
-          className="w-full"
-          disabled={pending}
-          onClick={() =>
-            onSubmit({
-              note: note.trim(),
-              expiresInDays: Number.parseInt(expiresInDays, 10) || 0,
-              maxUses: Number.parseInt(maxUses, 10) || 0,
-            })
-          }
-        >
-          <Plus className="size-4" />
+        <Button variant="outline" className="w-full" disabled={pending} onClick={handleSubmit}>
+          {pending ? (
+            <Loader2 className="size-4 animate-spin mr-1" />
+          ) : (
+            <Plus className="size-4 mr-1" />
+          )}
           {t('outputs.createShare')}
         </Button>
       </CardFooter>
@@ -642,27 +716,24 @@ function EditNoteDialog({
 
   return (
     <Dialog open={!!share} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>{t('outputs.editNote')}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-1.5">
-          <Label htmlFor="edit-share-note">{t('outputs.shareNote')}</Label>
+        <div className="py-2">
           <Input
-            id="edit-share-note"
-            maxLength={200}
-            placeholder={t('outputs.shareNotePlaceholder')}
             value={note}
             onChange={(event) => setNote(event.target.value)}
+            maxLength={200}
+            placeholder={t('outputs.shareNotePlaceholder')}
           />
-          <p className="text-xs text-muted-foreground">{t('outputs.shareNoteHint')}</p>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={pending}>
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button variant="outline" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button onClick={() => onSave(note.trim())} disabled={pending}>
-            {t('outputs.saveNote')}
+          <Button disabled={pending} onClick={() => onSave(note.trim())}>
+            {t('common.save')}
           </Button>
         </DialogFooter>
       </DialogContent>

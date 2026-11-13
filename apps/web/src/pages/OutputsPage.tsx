@@ -1,6 +1,6 @@
 import { type OutputDto, TARGET_LABELS } from '@subhub/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { MoreHorizontal, Plus, Send } from 'lucide-react';
+import { Layers, MoreHorizontal, Plus, Send, Share2, Sliders } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
@@ -17,6 +17,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -58,79 +59,111 @@ export function OutputsPage() {
             }}
           >
             <Plus className="size-4" />
-            <span className="hidden sm:inline">{t('outputs.new')}</span>
+            <span>{t('outputs.new')}</span>
           </Button>
         }
       />
 
       {outputs.isLoading ? (
-        <div className="space-y-2">
-          <Skeleton className="h-20 w-full rounded-xl" />
-          <Skeleton className="h-20 w-full rounded-xl" />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Skeleton className="h-28 w-full rounded-xl" />
+          <Skeleton className="h-28 w-full rounded-xl" />
         </div>
       ) : outputs.data?.length ? (
-        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-0.5">
           {outputs.data.map((output) => (
             <Card
               key={output.id}
-              className="flex flex-row items-start gap-2 px-4 py-3 transition-colors hover:bg-muted/30"
+              className="group relative overflow-hidden transition-all hover:border-foreground/20 hover:shadow-sm"
             >
-              <Link to={`/outputs/${output.id}`} className="flex min-w-0 flex-1 items-start">
-                <div className="min-w-0 flex-1">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 gap-3">
+                <Link
+                  to={`/outputs/${output.id}`}
+                  className="flex-1 min-w-0 space-y-2.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-md"
+                >
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="truncate text-sm font-medium">{output.name}</span>
+                    <span className="truncate text-base font-medium text-foreground group-hover:text-primary transition-colors">
+                      {output.name}
+                    </span>
                     <Badge variant="secondary">{TARGET_LABELS[output.target]}</Badge>
                     {!output.enabled ? (
-                      <Badge variant="outline" className="text-muted-foreground">
+                      <Badge variant="outline" className="text-muted-foreground border-dashed">
                         {t('common.disabled')}
                       </Badge>
                     ) : null}
                   </div>
-                  <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                    <span>
-                      {t('outputs.sources')}:{' '}
-                      {output.sources.length > 0
-                        ? output.sources.map((item) => item.name).join(', ')
-                        : t('common.none')}
-                    </span>
-                    <span>
-                      {t('outputs.processors')}: {output.processors.length}
-                    </span>
-                    <span>
-                      {t('outputs.shares')}: {output.shareCount}
-                    </span>
+
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1.5">
+                      <Layers className="size-3.5 text-muted-foreground" />
+                      <span>
+                        {t('outputs.sources')}:{' '}
+                        <strong className="font-medium text-foreground/80">
+                          {output.sources.length > 0
+                            ? output.sources.map((item) => item.name).join(', ')
+                            : t('common.none')}
+                        </strong>
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Sliders className="size-3.5 text-muted-foreground" />
+                      <span>
+                        {t('outputs.processors')}:{' '}
+                        <strong className="font-medium text-foreground/80">
+                          {output.processors.length}
+                        </strong>
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Share2 className="size-3.5 text-muted-foreground" />
+                      <span>
+                        {t('outputs.shares')}:{' '}
+                        <strong className="font-medium text-foreground/80">
+                          {output.shareCount}
+                        </strong>
+                      </span>
+                    </div>
                   </div>
+                </Link>
+
+                <div className="flex items-center justify-end gap-1.5 shrink-0 pt-2 sm:pt-0 border-t border-border/40 sm:border-t-0">
+                  <CopySubscription
+                    url={output.url}
+                    defaultTarget={output.target}
+                    variant="outline"
+                    showLabel
+                  />
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon-sm" aria-label={t('common.actions')}>
+                        <MoreHorizontal className="size-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-36">
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setEditing(output);
+                          setFormOpen(true);
+                        }}
+                      >
+                        {t('common.edit')}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onClick={() => setDeleting(output)}
+                      >
+                        {t('common.delete')}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
-              </Link>
-              <CopySubscription url={output.url} defaultTarget={output.target} />
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" aria-label={t('common.actions')}>
-                    <MoreHorizontal className="size-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem
-                    onClick={() => {
-                      setEditing(output);
-                      setFormOpen(true);
-                    }}
-                  >
-                    {t('common.edit')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="text-destructive"
-                    onClick={() => setDeleting(output)}
-                  >
-                    {t('common.delete')}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              </div>
             </Card>
           ))}
         </div>
       ) : (
-        <Card className="flex min-h-0 flex-1 items-center justify-center py-0">
+        <Card className="flex min-h-[300px] flex-1 items-center justify-center p-8">
           <EmptyState
             icon={Send}
             title={t('outputs.empty')}
