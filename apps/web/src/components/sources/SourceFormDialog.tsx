@@ -185,8 +185,9 @@ export function SourceFormDialog({
               <Textarea
                 id="source-content"
                 rows={7}
+                wrap="soft"
                 placeholder="ss://...&#10;vmess://..."
-                className="font-mono text-xs"
+                className="max-h-72 min-h-32 resize-y break-all font-mono text-xs leading-relaxed"
                 {...form.register('content')}
               />
               <p className="text-xs text-muted-foreground">{t('sources.contentHint')}</p>
@@ -201,8 +202,9 @@ export function SourceFormDialog({
             <Textarea
               id="source-headers"
               rows={3}
+              wrap="soft"
               placeholder='{"X-Header": "value"}'
-              className="font-mono text-xs"
+              className="max-h-48 min-h-20 resize-y break-all font-mono text-xs leading-relaxed"
               {...form.register('headersText')}
             />
             <p className="text-xs text-muted-foreground">{t('sources.headersHint')}</p>
