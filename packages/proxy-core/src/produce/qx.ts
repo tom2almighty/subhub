@@ -1,4 +1,5 @@
 import type { ProxyNode } from '@subhub/shared';
+import { quoteIfDelimited } from '../text.js';
 import { splitList } from '../util.js';
 
 function append(base: string, params: Record<string, string | undefined>): string {
@@ -24,7 +25,7 @@ function tlsParams(node: ProxyNode): Record<string, string | undefined> {
   return {
     'over-tls': node.network === 'ws' ? undefined : node.tls ? 'true' : undefined,
     'tls-verification': node['skip-cert-verify'] ? 'false' : undefined,
-    'tls-host': node.sni || undefined,
+    'tls-host': node.sni ? quoteIfDelimited(node.sni) : undefined,
     'tls-alpn': encodeAlpn(splitList(node.alpn)),
     'tls-cert-sha256': node['tls-fingerprint'] || undefined,
     'reality-base64-pubkey': node['reality-opts']?.['public-key'] || undefined,
@@ -35,21 +36,23 @@ function tlsParams(node: ProxyNode): Record<string, string | undefined> {
 function wsParams(node: ProxyNode): Record<string, string | undefined> {
   if (!node.network || node.network === 'tcp') return {};
   if (node.network === 'ws') {
+    const path = node['ws-opts']?.path;
+    const host = node['ws-opts']?.headers?.Host;
     return {
       obfs: node.tls ? 'wss' : 'ws',
-      'obfs-uri': node['ws-opts']?.path,
-      'obfs-host': node['ws-opts']?.headers?.Host,
+      'obfs-uri': path ? quoteIfDelimited(path) : undefined,
+      'obfs-host': host ? quoteIfDelimited(host) : undefined,
     };
   }
   if (node.network === 'http') {
+    const rawPath = node['http-opts']?.path;
+    const rawHost = node['http-opts']?.headers?.Host;
+    const path = Array.isArray(rawPath) ? rawPath[0] : rawPath;
+    const host = Array.isArray(rawHost) ? rawHost[0] : rawHost;
     return {
       obfs: 'http',
-      'obfs-uri': Array.isArray(node['http-opts']?.path)
-        ? node['http-opts']?.path?.[0]
-        : node['http-opts']?.path,
-      'obfs-host': Array.isArray(node['http-opts']?.headers?.Host)
-        ? node['http-opts']?.headers?.Host?.[0]
-        : node['http-opts']?.headers?.Host,
+      'obfs-uri': path ? quoteIfDelimited(path) : undefined,
+      'obfs-host': host ? quoteIfDelimited(host) : undefined,
     };
   }
   throw new Error(`QX does not support transport ${node.network}`);
@@ -59,7 +62,7 @@ function common(node: ProxyNode): Record<string, string | undefined> {
   return {
     'fast-open': node.tfo ? 'true' : undefined,
     'udp-relay': node.udp ? 'true' : undefined,
-    tag: node.name,
+    tag: quoteIfDelimited(node.name),
   };
 }
 
@@ -67,17 +70,25 @@ function shadowsocks(node: ProxyNode): string {
   const base = `shadowsocks=${node.server}:${node.port}`;
   const params: Record<string, string | undefined> = {
     method: node.cipher ?? 'none',
-    password: node.password,
+    password: node.password ? quoteIfDelimited(node.password) : undefined,
     ...common(node),
   };
   if (node.plugin === 'obfs') {
     params.obfs = node['plugin-opts']?.mode ?? 'http';
-    params['obfs-host'] = node['plugin-opts']?.host || undefined;
-    params['obfs-uri'] = node['plugin-opts']?.path || undefined;
+    params['obfs-host'] = node['plugin-opts']?.host
+      ? quoteIfDelimited(node['plugin-opts'].host)
+      : undefined;
+    params['obfs-uri'] = node['plugin-opts']?.path
+      ? quoteIfDelimited(node['plugin-opts'].path)
+      : undefined;
   } else if (node.plugin === 'v2ray-plugin') {
     params.obfs = node['plugin-opts']?.tls ? 'wss' : 'ws';
-    params['obfs-host'] = node['plugin-opts']?.host || undefined;
-    params['obfs-uri'] = node['plugin-opts']?.path || undefined;
+    params['obfs-host'] = node['plugin-opts']?.host
+      ? quoteIfDelimited(node['plugin-opts'].host)
+      : undefined;
+    params['obfs-uri'] = node['plugin-opts']?.path
+      ? quoteIfDelimited(node['plugin-opts'].path)
+      : undefined;
   } else if (node.plugin) {
     throw new Error(`QX does not support Shadowsocks plugin ${node.plugin}`);
   }
@@ -88,7 +99,7 @@ function vmess(node: ProxyNode): string {
   const base = `vmess=${node.server}:${node.port}`;
   return append(base, {
     method: node.cipher || 'auto',
-    password: node.uuid,
+    password: node.uuid ? quoteIfDelimited(node.uuid) : undefined,
     ...wsParams(node),
     ...(node.network !== 'ws' && node.tls ? { obfs: 'over-tls' } : {}),
     ...tlsParams(node),
@@ -104,7 +115,7 @@ function vless(node: ProxyNode): string {
   const base = `vless=${node.server}:${node.port}`;
   return append(base, {
     method: 'none',
-    password: node.uuid,
+    password: node.uuid ? quoteIfDelimited(node.uuid) : undefined,
     ...wsParams(node),
     ...(node.network !== 'ws' && node.tls ? { obfs: 'over-tls' } : {}),
     ...tlsParams(node),
@@ -116,7 +127,7 @@ function vless(node: ProxyNode): string {
 function trojan(node: ProxyNode): string {
   const base = `trojan=${node.server}:${node.port}`;
   return append(base, {
-    password: node.password,
+    password: node.password ? quoteIfDelimited(node.password) : undefined,
     ...wsParams(node),
     ...(node.network !== 'ws' && node.tls ? { obfs: 'over-tls' } : {}),
     ...tlsParams(node),
@@ -130,7 +141,7 @@ function anytls(node: ProxyNode): string {
   }
   const base = `anytls=${node.server}:${node.port}`;
   return append(base, {
-    password: node.password,
+    password: node.password ? quoteIfDelimited(node.password) : undefined,
     'over-tls': 'true',
     ...tlsParams(node),
     ...common(node),
@@ -140,8 +151,8 @@ function anytls(node: ProxyNode): string {
 function http(node: ProxyNode): string {
   const base = `http=${node.server}:${node.port}`;
   return append(base, {
-    username: node.username || undefined,
-    password: node.password || undefined,
+    username: node.username ? quoteIfDelimited(node.username) : undefined,
+    password: node.password ? quoteIfDelimited(node.password) : undefined,
     ...(node.tls ? { 'over-tls': 'true' } : {}),
     ...tlsParams(node),
     ...common(node),
@@ -151,8 +162,8 @@ function http(node: ProxyNode): string {
 function socks5(node: ProxyNode): string {
   const base = `socks5=${node.server}:${node.port}`;
   return append(base, {
-    username: node.username || undefined,
-    password: node.password || undefined,
+    username: node.username ? quoteIfDelimited(node.username) : undefined,
+    password: node.password ? quoteIfDelimited(node.password) : undefined,
     ...(node.tls ? { 'over-tls': 'true' } : {}),
     ...tlsParams(node),
     ...common(node),

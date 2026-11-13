@@ -1,12 +1,9 @@
 import type { ProxyNode } from '@subhub/shared';
+import { quoteIfNeeded, quoteText, unquoteText } from '../text.js';
 import { splitList } from '../util.js';
 
 function sanitizeName(value: string): string {
   return value.replace(/[=,]/g, '').trim();
-}
-
-function quote(value: string): string {
-  return `"${value.replace(/"/g, '\\"')}"`;
 }
 
 function bool(value: boolean | undefined): string | undefined {
@@ -34,26 +31,28 @@ function wsParams(node: ProxyNode): Record<string, string | undefined> {
   const host = opts?.headers?.Host;
   return {
     ws: 'true',
-    'ws-path': typeof opts?.path === 'string' ? opts.path : undefined,
-    'ws-headers': host ? quote(`Host:${host}`) : undefined,
+    'ws-path': typeof opts?.path === 'string' ? quoteIfNeeded(opts.path) : undefined,
+    'ws-headers': host ? quoteText(`Host:${unquoteText(host)}`) : undefined,
   };
 }
 
 function grpcParams(node: ProxyNode): Record<string, string | undefined> {
   if (node.network !== 'grpc') return {};
+  const serviceName = node['grpc-opts']?.['grpc-service-name'];
   return {
     grpc: 'true',
-    'grpc-service-name': node['grpc-opts']?.['grpc-service-name'] || undefined,
+    'grpc-service-name': serviceName ? quoteIfNeeded(serviceName) : undefined,
   };
 }
 
 function tlsParams(node: ProxyNode, includeTls = true): Record<string, string | undefined> {
   const reality = node['reality-opts'];
+  const alpn = splitList(node.alpn);
   return {
     tls: reality ? undefined : includeTls ? bool(node.tls) : undefined,
-    sni: node.sni || undefined,
+    sni: node.sni ? quoteIfNeeded(node.sni) : undefined,
     'skip-cert-verify': bool(node['skip-cert-verify']),
-    alpn: splitList(node.alpn)?.join(',') || undefined,
+    alpn: alpn ? quoteText(alpn.join(',')) : undefined,
     'reality-public-key': reality?.['public-key'] || undefined,
     'reality-short-id': reality?.['short-id'] || undefined,
   };
@@ -70,18 +69,24 @@ function shadowsocks(node: ProxyNode): string {
   const base = `${sanitizeName(node.name)}=ss,${node.server},${node.port}`;
   const params: Record<string, string | undefined> = {
     'encrypt-method': node.cipher ?? 'none',
-    password: quote(node.password ?? ''),
+    password: quoteText(node.password ?? ''),
     ...commonParams(node),
   };
   if (node.plugin === 'obfs') {
     params.obfs = node['plugin-opts']?.mode ?? 'http';
-    params['obfs-host'] = node['plugin-opts']?.host || undefined;
-    params['obfs-uri'] = node['plugin-opts']?.path || undefined;
+    params['obfs-host'] = node['plugin-opts']?.host
+      ? quoteIfNeeded(node['plugin-opts'].host)
+      : undefined;
+    params['obfs-uri'] = node['plugin-opts']?.path
+      ? quoteIfNeeded(node['plugin-opts'].path)
+      : undefined;
   } else if (node.plugin === 'shadow-tls') {
     params['shadow-tls-password'] = node['plugin-opts']?.password
-      ? quote(node['plugin-opts'].password)
+      ? quoteText(node['plugin-opts'].password)
       : undefined;
-    params['shadow-tls-sni'] = node['plugin-opts']?.host || undefined;
+    params['shadow-tls-sni'] = node['plugin-opts']?.host
+      ? quoteIfNeeded(node['plugin-opts'].host)
+      : undefined;
     params['shadow-tls-version'] = node['plugin-opts']?.version
       ? `${node['plugin-opts'].version}`
       : undefined;
@@ -97,7 +102,7 @@ function vmess(node: ProxyNode): string {
     throw new Error('Surge VMess does not support gRPC transport');
   }
   return append(base, {
-    username: node.uuid || undefined,
+    username: node.uuid ? quoteIfNeeded(node.uuid) : undefined,
     'encrypt-method': node.cipher || 'auto',
     'vmess-aead': `${node.aead ?? node.alterId === 0}`,
     ...wsParams(node),
@@ -126,7 +131,7 @@ function vless(node: ProxyNode): string {
   const transport =
     node.network === 'grpc' ? grpcParams(node) : node.network === 'ws' ? wsParams(node) : {};
   return append(base, {
-    username: node.uuid || undefined,
+    username: node.uuid ? quoteIfNeeded(node.uuid) : undefined,
     flow: node.flow || undefined,
     ...transport,
     ...tlsParams(node),
@@ -139,7 +144,7 @@ function trojan(node: ProxyNode): string {
     throw new Error(`Surge does not support Trojan transport ${node.network}`);
   }
   return append(base, {
-    password: quote(node.password ?? ''),
+    password: quoteText(node.password ?? ''),
     ...wsParams(node),
     ...tlsParams(node, true),
     ...commonParams(node),
@@ -149,15 +154,16 @@ function trojan(node: ProxyNode): string {
 function hysteria2(node: ProxyNode): string {
   const base = `${sanitizeName(node.name)}=hysteria2,${node.server},${node.port}`;
   const params: Record<string, string | undefined> = {
-    password: quote(node.password ?? ''),
+    password: quoteText(node.password ?? ''),
     ...tlsParams(node, true),
     ...commonParams(node),
     'download-bandwidth': node.down ? `${node.down}`.match(/\d+/)?.[0] : undefined,
     'port-hopping': node.ports?.replace(/,/g, ';'),
   };
   if (node['obfs-password']) {
-    if (node.obfs === 'salamander') params['salamander-password'] = quote(node['obfs-password']);
-    else if (node.obfs === 'gecko') params['gecko-password'] = quote(node['obfs-password']);
+    if (node.obfs === 'salamander')
+      params['salamander-password'] = quoteText(node['obfs-password']);
+    else if (node.obfs === 'gecko') params['gecko-password'] = quoteText(node['obfs-password']);
     else throw new Error(`Surge does not support Hysteria2 obfs ${node.obfs}`);
   }
   return append(base, params);
@@ -168,7 +174,7 @@ function tuic(node: ProxyNode): string {
   const base = `${sanitizeName(node.name)}=${isV5 ? 'tuic-v5' : 'tuic'},${node.server},${node.port}`;
   return append(base, {
     uuid: isV5 ? node.uuid || undefined : undefined,
-    password: isV5 ? quote(node.password ?? '') : undefined,
+    password: isV5 ? quoteText(node.password ?? '') : undefined,
     token: isV5 ? undefined : node.token || undefined,
     ...tlsParams(node, true),
     ...commonParams(node),
@@ -181,7 +187,7 @@ function anytls(node: ProxyNode): string {
   }
   const base = `${sanitizeName(node.name)}=anytls,${node.server},${node.port}`;
   return append(base, {
-    password: quote(node.password ?? ''),
+    password: quoteText(node.password ?? ''),
     ...tlsParams(node, true),
     ...commonParams(node),
   });
@@ -191,9 +197,9 @@ function snell(node: ProxyNode): string {
   const base = `${sanitizeName(node.name)}=snell,${node.server},${node.port}`;
   return append(base, {
     version: `${node.version ?? 4}`,
-    psk: quote(node.psk ?? ''),
+    psk: quoteText(node.psk ?? ''),
     obfs: node['obfs-opts']?.mode || undefined,
-    'obfs-host': node['obfs-opts']?.host || undefined,
+    'obfs-host': node['obfs-opts']?.host ? quoteIfNeeded(node['obfs-opts'].host) : undefined,
     ...commonParams(node),
   });
 }
@@ -201,9 +207,9 @@ function snell(node: ProxyNode): string {
 function http(node: ProxyNode): string {
   const base = `${sanitizeName(node.name)}=${node.tls ? 'https' : 'http'},${node.server},${node.port}`;
   return append(base, {
-    username: node.username || undefined,
-    password: node.password ? quote(node.password) : undefined,
-    sni: node.sni || undefined,
+    username: node.username ? quoteIfNeeded(node.username) : undefined,
+    password: node.password ? quoteText(node.password) : undefined,
+    sni: node.sni ? quoteIfNeeded(node.sni) : undefined,
     'skip-cert-verify': bool(node['skip-cert-verify']),
     ...commonParams(node),
   });
@@ -212,8 +218,8 @@ function http(node: ProxyNode): string {
 function socks5(node: ProxyNode): string {
   const base = `${sanitizeName(node.name)}=socks5,${node.server},${node.port}`;
   return append(base, {
-    username: node.username || undefined,
-    password: node.password ? quote(node.password) : undefined,
+    username: node.username ? quoteIfNeeded(node.username) : undefined,
+    password: node.password ? quoteText(node.password) : undefined,
     ...commonParams(node),
   });
 }

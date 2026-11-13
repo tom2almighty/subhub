@@ -46,7 +46,7 @@ export function parseQuery(query: string): Record<string, string> {
     if (!part) continue;
     const index = part.indexOf('=');
     const key = index < 0 ? part : part.slice(0, index);
-    const value = index < 0 ? '' : part.slice(index + 1);
+    const value = index < 0 ? '' : part.slice(index + 1).replace(/\+/g, ' ');
     result[safeDecode(key) ?? key] = safeDecode(value) ?? value;
   }
   return result;

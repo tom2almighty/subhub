@@ -1,5 +1,6 @@
 import { PROXY_TYPES, type ProxyNode, type ProxyType } from '@subhub/shared';
 import { parse as parseYaml } from 'yaml';
+import { normalizeNodeText } from '../text.js';
 import { parseBool, parseIntOrUndefined, splitList } from '../util.js';
 
 const knownTypes = new Set<string>(PROXY_TYPES);
@@ -142,7 +143,7 @@ function normalizeMihomoProxy(raw: Record<string, any>): ProxyNode {
 
 export function normalizeProxyObject(raw: unknown): ProxyNode {
   if (!isPlainObject(raw)) throw new Error('Proxy entry is not an object');
-  return normalizeMihomoProxy(raw);
+  return normalizeNodeText(normalizeMihomoProxy(raw));
 }
 
 export function parseMihomoYaml(text: string): { nodes: ProxyNode[]; warnings: string[] } {
@@ -283,7 +284,7 @@ export function parseStructured(value: unknown): { nodes: ProxyNode[]; warnings:
       const type = `${item.type ?? ''}`.toLowerCase();
       if (['direct', 'block', 'dns', 'selector', 'urltest'].includes(type)) continue;
       try {
-        nodes.push(normalizeSingboxOutbound(item));
+        nodes.push(normalizeNodeText(normalizeSingboxOutbound(item)));
       } catch (error) {
         warnings.push(`outbound #${index + 1}: ${(error as Error).message}`);
       }

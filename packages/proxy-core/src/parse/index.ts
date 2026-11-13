@@ -1,5 +1,6 @@
 import type { ProxyNode } from '@subhub/shared';
 import { parse as parseYaml } from 'yaml';
+import { normalizeNodeText } from '../text.js';
 import { maybeBase64Decode } from '../util.js';
 import { parseStructured } from './mihomo.js';
 import { isProxySection, parseProxyLine } from './proxy-line.js';
@@ -64,12 +65,12 @@ function parseLineFormat(text: string): ParseResult {
 
     try {
       if (URI_PATTERN.test(line)) {
-        nodes.push(parseUri(line));
+        nodes.push(normalizeNodeText(parseUri(line)));
         continue;
       }
       const node = parseProxyLine(line);
       if (node) {
-        nodes.push(node);
+        nodes.push(normalizeNodeText(node));
         continue;
       }
     } catch (error) {

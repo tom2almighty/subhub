@@ -446,6 +446,41 @@ describe('parseNodes', () => {
     expect(warnings[0]).toContain('Unrecognized subscription format');
   });
 
+  it('strips wrapping quotes from transport fields', () => {
+    const { nodes } = parseNodes(
+      'trojan://pass@1.2.3.4:443?security=tls&type=ws&path=%2Fws&host=%22xxx%22&sni=%22xxx%22#T',
+    );
+    expect(nodes[0]?.['ws-opts']?.headers?.Host).toBe('xxx');
+    expect(nodes[0]?.sni).toBe('xxx');
+    const { content } = produce(nodes, 'surge');
+    expect(content).toContain('ws-headers="Host:xxx"');
+    expect(content).not.toContain('\\"');
+    expect(content).not.toContain('%22');
+  });
+
+  it('round-trips delimiter and quote characters', () => {
+    const special: ProxyNode = {
+      name: 'T 1',
+      type: 'trojan',
+      server: '1.2.3.4',
+      port: 443,
+      password: 'a,"b',
+      tls: true,
+      sni: 'x',
+      network: 'ws',
+      'ws-opts': { path: '/a,b c', headers: { Host: 'h"1' } },
+    };
+    for (const target of ['surge', 'loon', 'qx', 'mihomo', 'uri'] as const) {
+      const { content, warnings } = produce([special], target);
+      expect(warnings).toEqual([]);
+      const back = parseNodes(content).nodes[0];
+      expect(back?.password).toBe('a,"b');
+      expect(back?.sni).toBe('x');
+      expect(back?.['ws-opts']?.path).toBe('/a,b c');
+      expect(back?.['ws-opts']?.headers?.Host).toBe('h"1');
+    }
+  });
+
   it('round-trips the Surge, Loon and QX line formats', () => {
     const source = parseUri(VLESS_WS);
     for (const target of ['surge', 'loon', 'qx'] as const) {
