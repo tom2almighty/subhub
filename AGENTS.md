@@ -70,11 +70,13 @@ target 会传入每一级处理器。DNS 处理器放在节点源链路，用于
 - `processors.ts`：过滤、改名、排序、脚本、加节点、旗帜、DNS。
 - `produce/`：Surge、Mihomo/Stash、Loon、Quantumult X、sing-box、URI、JSON。
 
+`text.ts` 统一处理引号：解析后清掉 host/path/SNI 等文本字段外层的引号，输出时按格式需要重新加引号并转义，凭据字段不参与去引号。新增输入解析或输出平台时复用它，避免嵌套引号。
+
 保持纯函数、无 IO（DNS 处理器除外，它走 DoH/DoT），方便单测。
 
 ### 前端
 
-`App.tsx` 懒加载页面；`RequireAuth` 通过 `/api/auth/me` 判定登录。`AppLayout` 是 `h-svh` 满高外壳，页面遵循 `flex min-h-0 flex-1 flex-col` + 内部滚动的结构；列表用容器查询做多列。分享链接集中在 `SharesPage` 管理，节点源与聚合详情不再包含分享面板。`ProcessorEditor` 使用 dnd-kit 拖动排序，顺序即处理器执行顺序。组件只用 `components/ui` 中的 shadcn 源码与语义化 Tailwind token。
+`App.tsx` 懒加载页面；`RequireAuth` 通过 `/api/auth/me` 判定登录。`AppLayout` 是 `h-svh` 满高外壳，页面遵循 `flex min-h-0 flex-1 flex-col` + 内部滚动的结构。节点源与聚合列表通过 `ColumnSwitcher` 切换 1/2/3 列，选择写入 localStorage。分享链接集中在 `SharesPage` 管理，节点源与聚合详情不再包含分享面板。`ProcessorEditor` 使用 dnd-kit 拖动排序，顺序即处理器执行顺序。组件只用 `components/ui` 中的 shadcn 源码与语义化 Tailwind token。
 
 i18n 默认中文，资源只包含 `zh-CN` 与 `en-US`，`types/i18n.d.ts` 从 `zh-CN.json` 推导 key，新增文案必须同时补两个 JSON。
 
