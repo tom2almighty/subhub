@@ -1,4 +1,10 @@
-import { type ShareDto, type ShareTargetKind, TARGET_LABELS, TARGETS, type Target } from '@subhub/shared';
+import {
+  type ShareDto,
+  type ShareTargetKind,
+  TARGET_LABELS,
+  TARGETS,
+  type Target,
+} from '@subhub/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link2, Loader2, Plus, Share2, Trash2 } from 'lucide-react';
 import { useState } from 'react';
@@ -22,13 +28,7 @@ import { Switch } from '@/components/ui/switch';
 import { api } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 
-export function TargetSharePanel({
-  kind,
-  targetId,
-}: {
-  kind: ShareTargetKind;
-  targetId: number;
-}) {
+export function TargetSharePanel({ kind, targetId }: { kind: ShareTargetKind; targetId: number }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -211,8 +211,9 @@ export function TargetSharePanel({
               <Label className="text-xs">{t('shares.allowedTargets')}</Label>
               <div className="flex flex-wrap gap-2.5 rounded-md border p-2.5">
                 {TARGETS.map((tgt) => (
-                  <label key={tgt} className="flex items-center gap-1.5 text-xs">
+                  <div key={tgt} className="flex items-center gap-1.5 text-xs">
                     <Checkbox
+                      id={`share-target-${tgt}`}
                       checked={allowedTargets.includes(tgt)}
                       onCheckedChange={(checked) => {
                         setAllowedTargets((prev) =>
@@ -220,8 +221,13 @@ export function TargetSharePanel({
                         );
                       }}
                     />
-                    <span>{TARGET_LABELS[tgt]}</span>
-                  </label>
+                    <Label
+                      htmlFor={`share-target-${tgt}`}
+                      className="cursor-pointer font-normal text-xs"
+                    >
+                      {TARGET_LABELS[tgt]}
+                    </Label>
+                  </div>
                 ))}
               </div>
               <p className="text-[11px] text-muted-foreground">{t('shares.allowedTargetsHint')}</p>

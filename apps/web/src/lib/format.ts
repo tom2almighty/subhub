@@ -30,7 +30,7 @@ export function formatExpire(value: number | undefined): string {
 }
 
 export function flowPercent(flow: FlowInfo | null): number | null {
-  if (!flow || !flow.total || flow.total <= 0) return null;
+  if (!flow?.total || flow.total <= 0) return null;
   const used = (flow.upload ?? 0) + (flow.download ?? 0);
   return Math.min(100, Math.max(0, Math.round((used / flow.total) * 100)));
 }

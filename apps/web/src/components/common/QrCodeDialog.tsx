@@ -100,13 +100,14 @@ export function QrCodeDialog({
                 aria-label={fullUrl}
               >
                 <rect width={qr.length} height={qr.length} fill="#ffffff" />
-                {qr.map((row, r) =>
-                  row.map((cell, c) =>
-                    cell ? (
-                      <rect key={`${r}-${c}`} x={c} y={r} width={1} height={1} fill="#09090b" />
-                    ) : null,
-                  ),
-                )}
+                <path
+                  d={qr
+                    .map((row, r) =>
+                      row.map((cell, c) => (cell ? `M${c} ${r}h1v1h-1z` : '')).join(''),
+                    )
+                    .join('')}
+                  fill="#09090b"
+                />
               </svg>
             ) : (
               <div className="flex aspect-square w-full max-w-48 items-center justify-center text-xs text-muted-foreground">

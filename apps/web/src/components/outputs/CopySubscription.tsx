@@ -81,73 +81,65 @@ export function CopySubscription({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant={variant}
-          size={showLabel ? 'sm' : 'icon-sm'}
-          className={cn(showLabel && 'gap-1.5 text-xs sm:text-sm font-medium', className)}
-          aria-label={t('outputs.copyUrl')}
-          title={showLabel ? undefined : t('outputs.copyUrl')}
-        >
-          {copied ? (
-            <Check className="size-3.5 text-success" />
-          ) : (
-            <Copy className="size-3.5" />
-          )}
-          {showLabel ? <span>{t('outputs.copyUrl')}</span> : null}
-          {showLabel ? (
-            <ChevronDown className="size-3 text-muted-foreground transition-transform" />
-          ) : null}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56 p-1.5 shadow-lg">
-        <div
-          className="flex items-center justify-between gap-2 rounded-sm px-2 py-1.5"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <Label
-            htmlFor="copy-download-switch"
-            className="cursor-pointer text-xs font-normal text-muted-foreground"
+          <Button
+            type="button"
+            variant={variant}
+            size={showLabel ? 'sm' : 'icon-sm'}
+            className={cn(showLabel && 'gap-1.5 text-xs sm:text-sm font-medium', className)}
+            aria-label={t('outputs.copyUrl')}
+            title={showLabel ? undefined : t('outputs.copyUrl')}
           >
-            {t('outputs.downloadAttachment')}
-          </Label>
-          <Switch
-            id="copy-download-switch"
-            checked={download}
-            onCheckedChange={toggleDownload}
-          />
-        </div>
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel className="px-2 py-1.5 text-xs text-muted-foreground font-normal">
-          {t('outputs.platform')}
-        </DropdownMenuLabel>
-        <DropdownMenuItem
-          className="flex cursor-pointer items-center justify-between py-2 text-sm font-medium"
-          onSelect={() => void copy(defaultTarget)}
-        >
-          <span>{TARGET_LABELS[defaultTarget]}</span>
-          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-            {t('common.default', '默认')}
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        {TARGETS.filter((item) => item !== defaultTarget).map((target) => (
+            {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
+            {showLabel ? <span>{t('outputs.copyUrl')}</span> : null}
+            {showLabel ? (
+              <ChevronDown className="size-3 text-muted-foreground transition-transform" />
+            ) : null}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56 p-1.5 shadow-lg">
+          <div
+            className="flex items-center justify-between gap-2 rounded-sm px-2 py-1.5"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <Label
+              htmlFor="copy-download-switch"
+              className="cursor-pointer text-xs font-normal text-muted-foreground"
+            >
+              {t('outputs.downloadAttachment')}
+            </Label>
+            <Switch id="copy-download-switch" checked={download} onCheckedChange={toggleDownload} />
+          </div>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel className="px-2 py-1.5 text-xs text-muted-foreground font-normal">
+            {t('outputs.platform')}
+          </DropdownMenuLabel>
           <DropdownMenuItem
-            key={target}
-            className="flex cursor-pointer items-center justify-between py-2 text-sm"
-            onSelect={() => void copy(target)}
+            className="flex cursor-pointer items-center justify-between py-2 text-sm font-medium"
+            onSelect={() => void copy(defaultTarget)}
           >
-            <span>{TARGET_LABELS[target]}</span>
+            <span>{TARGET_LABELS[defaultTarget]}</span>
+            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+              {t('common.default', '默认')}
+            </span>
           </DropdownMenuItem>
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          className="flex cursor-pointer items-center gap-2 py-2 text-sm font-medium text-primary focus:text-primary"
-          onSelect={() => setQrOpen(true)}
-        >
-          <QrCode className="size-3.5" />
-          <span>{t('outputs.showQr')}</span>
-        </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {TARGETS.filter((item) => item !== defaultTarget).map((target) => (
+            <DropdownMenuItem
+              key={target}
+              className="flex cursor-pointer items-center justify-between py-2 text-sm"
+              onSelect={() => void copy(target)}
+            >
+              <span>{TARGET_LABELS[target]}</span>
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="flex cursor-pointer items-center gap-2 py-2 text-sm font-medium text-primary focus:text-primary"
+            onSelect={() => setQrOpen(true)}
+          >
+            <QrCode className="size-3.5" />
+            <span>{t('outputs.showQr')}</span>
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <QrCodeDialog

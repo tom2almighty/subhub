@@ -182,6 +182,7 @@ export function CommandPalette({
   ]);
 
   useEffect(() => {
+    void query;
     setActiveIndex(0);
   }, [query]);
 

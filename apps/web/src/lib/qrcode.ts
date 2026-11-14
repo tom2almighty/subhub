@@ -66,13 +66,76 @@ const VERSIONS: VersionSpec[] = [
   { version: 5, totalCodewords: 134, ecPerBlock: 24, blocks: [[2, 43]], alignment: [6, 30] },
   { version: 6, totalCodewords: 172, ecPerBlock: 16, blocks: [[4, 27]], alignment: [6, 34] },
   { version: 7, totalCodewords: 196, ecPerBlock: 18, blocks: [[4, 31]], alignment: [6, 22, 38] },
-  { version: 8, totalCodewords: 242, ecPerBlock: 22, blocks: [[2, 38], [2, 39]], alignment: [6, 24, 42] },
-  { version: 9, totalCodewords: 292, ecPerBlock: 22, blocks: [[3, 36], [2, 37]], alignment: [6, 26, 46] },
-  { version: 10, totalCodewords: 346, ecPerBlock: 26, blocks: [[4, 43], [1, 44]], alignment: [6, 28, 50] },
-  { version: 11, totalCodewords: 404, ecPerBlock: 30, blocks: [[1, 50], [4, 51]], alignment: [6, 30, 54] },
-  { version: 12, totalCodewords: 466, ecPerBlock: 22, blocks: [[6, 36], [2, 37]], alignment: [6, 32, 58] },
-  { version: 13, totalCodewords: 532, ecPerBlock: 22, blocks: [[8, 37], [1, 38]], alignment: [6, 34, 62] },
-  { version: 14, totalCodewords: 581, ecPerBlock: 24, blocks: [[4, 40], [5, 41]], alignment: [6, 26, 46, 66] },
+  {
+    version: 8,
+    totalCodewords: 242,
+    ecPerBlock: 22,
+    blocks: [
+      [2, 38],
+      [2, 39],
+    ],
+    alignment: [6, 24, 42],
+  },
+  {
+    version: 9,
+    totalCodewords: 292,
+    ecPerBlock: 22,
+    blocks: [
+      [3, 36],
+      [2, 37],
+    ],
+    alignment: [6, 26, 46],
+  },
+  {
+    version: 10,
+    totalCodewords: 346,
+    ecPerBlock: 26,
+    blocks: [
+      [4, 43],
+      [1, 44],
+    ],
+    alignment: [6, 28, 50],
+  },
+  {
+    version: 11,
+    totalCodewords: 404,
+    ecPerBlock: 30,
+    blocks: [
+      [1, 50],
+      [4, 51],
+    ],
+    alignment: [6, 30, 54],
+  },
+  {
+    version: 12,
+    totalCodewords: 466,
+    ecPerBlock: 22,
+    blocks: [
+      [6, 36],
+      [2, 37],
+    ],
+    alignment: [6, 32, 58],
+  },
+  {
+    version: 13,
+    totalCodewords: 532,
+    ecPerBlock: 22,
+    blocks: [
+      [8, 37],
+      [1, 38],
+    ],
+    alignment: [6, 34, 62],
+  },
+  {
+    version: 14,
+    totalCodewords: 581,
+    ecPerBlock: 24,
+    blocks: [
+      [4, 40],
+      [5, 41],
+    ],
+    alignment: [6, 26, 46, 66],
+  },
 ];
 
 const VERSION_INFO_BITS: Record<number, number> = {

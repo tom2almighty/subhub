@@ -131,7 +131,9 @@ export function SourcesPage() {
   const sources = useQuery({ queryKey: ['sources'], queryFn: api.listSources });
   const navigate = useNavigate();
   const totalNodes = sources.data?.reduce((sum, source) => sum + source.nodeCount, 0) ?? 0;
-  const hasRemote = (sources.data ?? []).some((source) => source.kind === 'remote' && source.enabled);
+  const hasRemote = (sources.data ?? []).some(
+    (source) => source.kind === 'remote' && source.enabled,
+  );
 
   const filteredSources = useMemo(() => {
     const list = sources.data ?? [];

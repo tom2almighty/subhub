@@ -83,7 +83,10 @@ function getShadowTls(node: ProxyNode): Record<string, unknown> | undefined {
   });
 }
 
-function getTransport(node: ProxyNode, includePlainTcp: boolean): Record<string, unknown> | undefined {
+function getTransport(
+  node: ProxyNode,
+  includePlainTcp: boolean,
+): Record<string, unknown> | undefined {
   const network = node.network;
   const sni = getSni(node);
   const skipVerify = node['skip-cert-verify'];

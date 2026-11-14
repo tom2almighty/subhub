@@ -182,7 +182,15 @@ async function resolveSourcesByIds(
   sourceStats: SourceBuildStat[];
   resolveSourceName: (node: ProxyNode) => string | undefined;
 }> {
-  if (sourceIds.length === 0) return { nodes: [], warnings: [], inputCount: 0, sourceStats: [] };
+  if (sourceIds.length === 0) {
+    return {
+      nodes: [],
+      warnings: [],
+      inputCount: 0,
+      sourceStats: [],
+      resolveSourceName: () => undefined,
+    };
+  }
   const rows = db.select().from(sources).where(inArray(sources.id, sourceIds)).all();
   const byId = new Map(rows.map((item) => [item.id, item]));
   const nodes: ProxyNode[] = [];
@@ -227,7 +235,8 @@ async function resolveSourcesByIds(
     warnings,
     inputCount,
     sourceStats,
-    resolveSourceName: (node: ProxyNode) => byRef.get(node) ?? byEndpoint.get(nodeEndpointKey(node)),
+    resolveSourceName: (node: ProxyNode) =>
+      byRef.get(node) ?? byEndpoint.get(nodeEndpointKey(node)),
   };
 }
 

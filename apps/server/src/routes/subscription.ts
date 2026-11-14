@@ -219,13 +219,7 @@ export default function registerSubscriptionRoutes(app: FastifyInstance): void {
       const sent =
         share.kind === 'output'
           ? await sendOutput(request, reply, share.targetId, effectiveTarget, download)
-          : await sendSource(
-              request,
-              reply,
-              findSource(share.targetId),
-              effectiveTarget,
-              download,
-            );
+          : await sendSource(request, reply, findSource(share.targetId), effectiveTarget, download);
       if (sent && request.method !== 'HEAD') consumeShare(token);
     } catch (error) {
       logFailure(request, error, token);

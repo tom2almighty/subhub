@@ -1,15 +1,6 @@
 import { type OutputDto, TARGET_LABELS } from '@subhub/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Layers,
-  MoreHorizontal,
-  Pencil,
-  Plus,
-  Search,
-  Send,
-  Share2,
-  Sliders,
-} from 'lucide-react';
+import { Layers, MoreHorizontal, Pencil, Plus, Search, Send, Share2, Sliders } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';

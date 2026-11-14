@@ -1,4 +1,9 @@
-import { type Processor, type ProxyNode, type ProxyType, SOURCE_DEFAULT_TARGET } from '@subhub/shared';
+import {
+  type Processor,
+  type ProxyNode,
+  type ProxyType,
+  SOURCE_DEFAULT_TARGET,
+} from '@subhub/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle,
@@ -420,11 +425,7 @@ export function SourceDetailPage() {
               </span>
               {data.kind === 'manual' ? (
                 <div className="flex items-center gap-1.5">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setBatchImportOpen(true)}
-                  >
+                  <Button variant="outline" size="sm" onClick={() => setBatchImportOpen(true)}>
                     <FileUp className="size-3.5 mr-1" />
                     {t('sources.batchImport')}
                   </Button>
@@ -507,6 +508,7 @@ export function SourceDetailPage() {
                 selectedIndices={filteredSelectedSet}
                 onToggleSelect={(idx) => {
                   const targetNode = filtered[idx];
+                  if (!targetNode) return;
                   const origIdx = allNodes.indexOf(targetNode);
                   if (origIdx < 0) return;
                   setSelectedOrigIndices((prev) => {
@@ -520,6 +522,7 @@ export function SourceDetailPage() {
                   data.kind === 'manual'
                     ? (idx) => {
                         const targetNode = filtered[idx];
+                        if (!targetNode) return;
                         const origIdx = allNodes.indexOf(targetNode);
                         if (origIdx >= 0) {
                           setEditingNodeIndex(origIdx);
@@ -532,6 +535,7 @@ export function SourceDetailPage() {
                   data.kind === 'manual'
                     ? (idx) => {
                         const targetNode = filtered[idx];
+                        if (!targetNode) return;
                         const origIdx = allNodes.indexOf(targetNode);
                         if (origIdx >= 0) {
                           const next = allNodes.filter((_, i) => i !== origIdx);
@@ -545,11 +549,7 @@ export function SourceDetailPage() {
               <div className="flex flex-1 flex-col items-center justify-center gap-3 py-12 text-center">
                 <p className="text-sm text-muted-foreground">{t('sources.nodeFormHint')}</p>
                 <div className="flex flex-wrap items-center justify-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setBatchImportOpen(true)}
-                  >
+                  <Button variant="outline" size="sm" onClick={() => setBatchImportOpen(true)}>
                     <FileUp className="size-3.5 mr-1" />
                     {t('sources.batchImport')}
                   </Button>

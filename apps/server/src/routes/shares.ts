@@ -1,12 +1,7 @@
 import { shareCreateSchema, shareUpdateSchema } from '@subhub/shared';
 import type { FastifyInstance } from 'fastify';
 import { badRequest } from '../errors.js';
-import {
-  createShare,
-  deleteShare,
-  listShares,
-  updateShare,
-} from '../services/share-service.js';
+import { createShare, deleteShare, listShares, updateShare } from '../services/share-service.js';
 
 function parseId(value: string): number {
   const id = Number(value);

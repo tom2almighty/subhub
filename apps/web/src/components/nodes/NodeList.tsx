@@ -94,81 +94,89 @@ export function NodeList({
         ? 'grid-cols-1 sm:grid-cols-2'
         : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3';
 
+  const seenKeys = new Map<string, number>();
+
   return (
     <>
       <ul className={cn('grid content-start gap-2', gridColsClass, className)}>
-        {nodes.map((node, index) => (
-          <li key={`${node.type}-${endpoint(node)}-${node.name}-${index}`}>
-            <div
-              className={cn(
-                'group flex w-full min-w-0 items-start justify-between gap-2 rounded-lg border border-border bg-card p-3 text-xs transition-all hover:border-primary/40 hover:bg-accent/40 hover:shadow-xs',
-                selectedIndices?.has(index) && 'border-primary/60 bg-primary/5',
-              )}
-            >
-              {selectable ? (
-                <div className="pt-0.5 shrink-0">
-                  <Checkbox
-                    checked={selectedIndices?.has(index) ?? false}
-                    onCheckedChange={() => onToggleSelect?.(index)}
-                  />
-                </div>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => setInspecting(node)}
-                className="min-w-0 flex-1 space-y-1 text-left focus-visible:outline-none"
+        {nodes.map((node, index) => {
+          const baseKey = `${node.type}-${endpoint(node)}-${node.name}`;
+          const dupCount = seenKeys.get(baseKey) ?? 0;
+          seenKeys.set(baseKey, dupCount + 1);
+          const itemKey = dupCount === 0 ? baseKey : `${baseKey}#${dupCount}`;
+          return (
+            <li key={itemKey}>
+              <div
+                className={cn(
+                  'group flex w-full min-w-0 items-start justify-between gap-2 rounded-lg border border-border bg-card p-3 text-xs transition-all hover:border-primary/40 hover:bg-accent/40 hover:shadow-xs',
+                  selectedIndices?.has(index) && 'border-primary/60 bg-primary/5',
+                )}
               >
-                <div className="break-words text-xs sm:text-sm font-medium text-foreground leading-snug group-hover:text-primary transition-colors">
-                  {node.name}
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px] tabular-nums text-muted-foreground">
-                  <span className="break-all">{endpoint(node)}</span>
-                  {node.network ? (
-                    <span className="rounded bg-muted px-1 py-0.2 text-[10px] uppercase">
-                      {node.network}
-                    </span>
-                  ) : null}
-                  {node.tls ? (
-                    <span className="inline-flex items-center gap-0.5 rounded bg-muted px-1 py-0.2 text-[10px]">
-                      <Lock className="size-2.5" />
-                      TLS
-                    </span>
-                  ) : null}
-                  {node.sourceName ? (
-                    <span className="rounded bg-secondary px-1.5 py-0.2 font-sans text-[10px] text-secondary-foreground">
-                      {node.sourceName}
-                    </span>
-                  ) : null}
-                </div>
-              </button>
-              <div className="flex shrink-0 items-center gap-1">
-                <ProtocolBadge type={node.type} />
-                {onEditNode ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    className="size-7 text-muted-foreground hover:text-foreground"
-                    onClick={() => onEditNode(index, node)}
-                  >
-                    <Pencil className="size-3.5" />
-                  </Button>
+                {selectable ? (
+                  <div className="pt-0.5 shrink-0">
+                    <Checkbox
+                      checked={selectedIndices?.has(index) ?? false}
+                      onCheckedChange={() => onToggleSelect?.(index)}
+                    />
+                  </div>
                 ) : null}
-                {onDeleteNode ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    className="size-7 text-muted-foreground hover:text-destructive"
-                    onClick={() => onDeleteNode(index, node)}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setInspecting(node)}
+                  className="min-w-0 flex-1 space-y-1 text-left focus-visible:outline-none"
+                >
+                  <div className="break-words text-xs sm:text-sm font-medium text-foreground leading-snug group-hover:text-primary transition-colors">
+                    {node.name}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px] tabular-nums text-muted-foreground">
+                    <span className="break-all">{endpoint(node)}</span>
+                    {node.network ? (
+                      <span className="rounded bg-muted px-1 py-0.2 text-[10px] uppercase">
+                        {node.network}
+                      </span>
+                    ) : null}
+                    {node.tls ? (
+                      <span className="inline-flex items-center gap-0.5 rounded bg-muted px-1 py-0.2 text-[10px]">
+                        <Lock className="size-2.5" />
+                        TLS
+                      </span>
+                    ) : null}
+                    {node.sourceName ? (
+                      <span className="rounded bg-secondary px-1.5 py-0.2 font-sans text-[10px] text-secondary-foreground">
+                        {node.sourceName}
+                      </span>
+                    ) : null}
+                  </div>
+                </button>
+                <div className="flex shrink-0 items-center gap-1">
+                  <ProtocolBadge type={node.type} />
+                  {onEditNode ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      className="size-7 text-muted-foreground hover:text-foreground"
+                      onClick={() => onEditNode(index, node)}
+                    >
+                      <Pencil className="size-3.5" />
+                    </Button>
+                  ) : null}
+                  {onDeleteNode ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      className="size-7 text-muted-foreground hover:text-destructive"
+                      onClick={() => onDeleteNode(index, node)}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  ) : null}
+                </div>
               </div>
-            </div>
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ul>
       <NodeDetailDrawer node={inspecting} onClose={() => setInspecting(null)} />
     </>

@@ -478,10 +478,7 @@ function EditShareDialog({
           <Button variant="outline" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button
-            disabled={pending}
-            onClick={() => onSave({ note: note.trim(), allowedTargets })}
-          >
+          <Button disabled={pending} onClick={() => onSave({ note: note.trim(), allowedTargets })}>
             {t('common.save')}
           </Button>
         </DialogFooter>

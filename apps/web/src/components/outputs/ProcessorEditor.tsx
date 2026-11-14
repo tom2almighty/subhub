@@ -346,10 +346,7 @@ function ArgsEditor({
               </Select>
             </Field>
             <Field label={t('processors.sourceTagFormat')}>
-              <Input
-                value={format}
-                onChange={(event) => patch({ format: event.target.value })}
-              />
+              <Input value={format} onChange={(event) => patch({ format: event.target.value })} />
             </Field>
           </div>
           <p className="text-[11px] text-muted-foreground">{t('processors.sourceTagHint')}</p>
@@ -612,7 +609,7 @@ function processorSummary(processor: Processor, t: TFunction): string {
 }
 
 const PROCESSOR_PRESETS: {
-  key: string;
+  key: 'cleanAndFlag' | 'dropUseless' | 'dedupe' | 'mainstreamProtocols' | 'sortByRegion';
   create: () => Processor[];
 }[] = [
   {

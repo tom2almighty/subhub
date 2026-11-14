@@ -1,15 +1,15 @@
 import {
+  closestCenter,
   DndContext,
   type DragEndEvent,
   KeyboardSensor,
   PointerSensor,
-  closestCenter,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
 import {
-  SortableContext,
   arrayMove,
+  SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
@@ -109,16 +109,6 @@ export function OutputDetailPage() {
 
   const activePreviewTarget = previewTarget ?? output.data?.target ?? 'mihomo';
 
-  const draftKey = useMemo(
-    () =>
-      JSON.stringify({
-        target: activePreviewTarget,
-        sourceIds,
-        processors,
-      }),
-    [activePreviewTarget, sourceIds, processors],
-  );
-
   const previewMutateRef = useRef(preview.mutate);
   previewMutateRef.current = preview.mutate;
 
@@ -132,7 +122,7 @@ export function OutputDetailPage() {
       });
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [hydrated, output.data, draftKey, activePreviewTarget, sourceIds, processors]);
+  }, [hydrated, output.data, activePreviewTarget, sourceIds, processors]);
 
   const save = useMutation({
     mutationFn: () =>
@@ -266,7 +256,9 @@ export function OutputDetailPage() {
 
       {availableSources.length > 0 ? (
         <div className="space-y-2">
-          <h3 className="text-xs font-medium text-muted-foreground">{t('outputs.selectSources')}</h3>
+          <h3 className="text-xs font-medium text-muted-foreground">
+            {t('outputs.selectSources')}
+          </h3>
           <Card className="overflow-hidden p-0">
             <div className="divide-y divide-border">
               {availableSources.map((source) => (
@@ -376,8 +368,8 @@ export function OutputDetailPage() {
                 </span>
               </div>
               <ul className="mt-1.5 space-y-1 text-xs">
-                {preview.data.dropped.slice(0, 8).map((item, idx) => (
-                  <li key={`${item.name}-${idx}`}>
+                {preview.data.dropped.slice(0, 8).map((item) => (
+                  <li key={`${item.type}-${item.name}-${item.reason}`}>
                     • [{item.type}] {item.name}: {item.reason}
                   </li>
                 ))}
@@ -530,7 +522,10 @@ export function OutputDetailPage() {
         <TabsContent value="sources" className="mt-4 min-h-0 flex-1 overflow-y-auto outline-none">
           {sourcesPanel}
         </TabsContent>
-        <TabsContent value="processors" className="mt-4 min-h-0 flex-1 overflow-y-auto outline-none">
+        <TabsContent
+          value="processors"
+          className="mt-4 min-h-0 flex-1 overflow-y-auto outline-none"
+        >
           {processorsPanel}
         </TabsContent>
         <TabsContent value="shares" className="mt-4 min-h-0 flex-1 overflow-y-auto outline-none">

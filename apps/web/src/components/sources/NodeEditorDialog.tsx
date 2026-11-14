@@ -99,7 +99,10 @@ export function NodeEditorDialog({
       return;
     }
     const parsedPort = Number(port);
-    if (type !== 'tailscale' && (!server.trim() || !Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535)) {
+    if (
+      type !== 'tailscale' &&
+      (!server.trim() || !Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535)
+    ) {
       setError(t('sources.nodeEndpointRequired'));
       setTab('basic');
       return;
@@ -120,7 +123,15 @@ export function NodeEditorDialog({
     if (type === 'vmess' || type === 'vless' || type === 'tuic') {
       if (uuid.trim()) next.uuid = uuid.trim();
     }
-    if (type === 'ss' || type === 'trojan' || type === 'hysteria2' || type === 'anytls' || type === 'tuic' || type === 'http' || type === 'socks5') {
+    if (
+      type === 'ss' ||
+      type === 'trojan' ||
+      type === 'hysteria2' ||
+      type === 'anytls' ||
+      type === 'tuic' ||
+      type === 'http' ||
+      type === 'socks5'
+    ) {
       if (password.trim()) next.password = password.trim();
     }
     if (type === 'http' || type === 'socks5') {
@@ -174,9 +185,7 @@ export function NodeEditorDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>
-            {initialNode ? t('sources.editNode') : t('sources.addNode')}
-          </DialogTitle>
+          <DialogTitle>{initialNode ? t('sources.editNode') : t('sources.addNode')}</DialogTitle>
           <DialogDescription>{t('sources.nodeFormHint')}</DialogDescription>
         </DialogHeader>
 

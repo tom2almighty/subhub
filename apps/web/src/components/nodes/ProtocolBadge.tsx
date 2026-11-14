@@ -17,13 +17,7 @@ const PROTOCOL_STYLES: Record<ProxyType, string> = {
   socks5: 'border-border bg-muted text-muted-foreground',
 };
 
-export function ProtocolBadge({
-  type,
-  className,
-}: {
-  type: ProxyType;
-  className?: string;
-}) {
+export function ProtocolBadge({ type, className }: { type: ProxyType; className?: string }) {
   return (
     <Badge
       variant="outline"
