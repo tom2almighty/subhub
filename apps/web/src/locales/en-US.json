@@ -27,6 +27,7 @@
     "search": "Search",
     "none": "None",
     "enabled": "Enabled",
+    "enable": "Enable",
     "disabled": "Disabled",
     "unlimited": "Unlimited",
     "never": "Never",
@@ -37,7 +38,17 @@
     "collapse": "Collapse",
     "actions": "Actions",
     "list": "List",
-    "cards": "Cards"
+    "cards": "Cards",
+    "all": "All",
+    "duplicate": "Duplicate",
+    "default": "Default"
+  },
+  "command": {
+    "navigation": "Navigation",
+    "actions": "Quick actions",
+    "toggleTheme": "Toggle light / dark theme",
+    "placeholder": "Search sources, aggregates or actions…",
+    "empty": "No matching results"
   },
   "auth": {
     "login": "Sign in",
@@ -95,7 +106,39 @@
     "used": "Used",
     "total": "Total",
     "directSubscription": "Source subscription",
-    "directSubscriptionHint": "Usable as soon as the source exists. Serves URI by default; picking a platform when copying appends ?target=."
+    "directSubscriptionHint": "Usable as soon as the source exists. Serves URI by default; picking a platform when copying appends ?target=.",
+    "refreshAll": "Refresh all",
+    "refreshAllResult": "Refreshed {{refreshed}}/{{total}} remote sources",
+    "refreshAllPartial": "Refreshed {{refreshed}}/{{total}}, {{failed}} failed",
+    "errorStatus": "Error",
+    "searchPlaceholder": "Search source name…",
+    "filter_all": "All",
+    "filter_enabled": "Enabled",
+    "filter_error": "With errors",
+    "expired": "Expired",
+    "daysLeft": "{{count}}d left",
+    "tabBasic": "Basic",
+    "tabAdvanced": "Request & Sync",
+    "addNode": "Add node",
+    "editNode": "Edit node",
+    "batchImport": "Batch import",
+    "nodeFormHint": "Configure a single proxy node visually; saved directly as structured node data.",
+    "nodeTabBasic": "Basic",
+    "nodeTabAuth": "Auth",
+    "nodeTabTransport": "Transport & TLS",
+    "nodeNameRequired": "Node name is required",
+    "nodeEndpointRequired": "Server and port are required",
+    "skipCertVerify": "Skip cert verify",
+    "inspecting": "Parsing nodes...",
+    "parsedCount": "Detected {{count}} nodes (format: {{format}})",
+    "importMode": "Import mode",
+    "importAppend": "Append to existing",
+    "importReplace": "Replace existing",
+    "confirmImport": "Confirm import",
+    "duplicateFound": "Detected {{count}} duplicate node(s) with the same endpoint",
+    "dedupeNow": "Remove duplicates",
+    "selectedCount": "{{count}} selected",
+    "deleteSelected": "Delete selected"
   },
   "shares": {
     "title": "Shares",
@@ -112,7 +155,10 @@
     "maxUses": "Max uses (0 = unlimited)",
     "create": "Create share link",
     "summary_one": "{{count}} share link",
-    "summary_other": "{{count}} share links"
+    "summary_other": "{{count}} share links",
+    "allowedTargets": "Allowed platforms",
+    "allowedTargetsHint": "Leave empty to allow all platforms, or select specific allowed targets.",
+    "lastUsedAt": "Last used"
   },
   "outputs": {
     "title": "Aggregates",
@@ -162,7 +208,23 @@
     "nodeResults": "{{count}} results",
     "nodeResults_one": "{{count}} result",
     "summary_one": "{{count}} aggregate",
-    "summary_other": "{{count}} aggregates"
+    "summary_other": "{{count}} aggregates",
+    "searchPlaceholder": "Search aggregate, target or source…",
+    "pipeline": "Build pipeline",
+    "showQr": "QR code",
+    "downloadAttachment": "Download as file",
+    "cardView": "Card view",
+    "textView": "Text view",
+    "droppedNodes": "Skipped incompatible nodes",
+    "sourceDisabledBadge": "Disabled",
+    "qrTitle": "Scan to import subscription",
+    "qrHint": "Scan with your proxy client, or switch target platform before copying.",
+    "qrTooLong": "Subscription URL is too long to encode"
+  },
+  "nodes": {
+    "connection": "Connection",
+    "security": "Security & TLS",
+    "rawConfig": "Full node config (JSON)"
   },
   "processors": {
     "filter": "Regex filter",
@@ -171,6 +233,10 @@
     "dedupe": "Deduplicate",
     "rename": "Regex rename",
     "prefix-suffix": "Prefix / suffix",
+    "source-tag": "Source tag",
+    "sourceTagPosition": "Position",
+    "sourceTagFormat": "Tag format",
+    "sourceTagHint": "Use {{source}} as placeholder for the source name, e.g. [{{source}}] or - {{source}}",
     "sort": "Sort",
     "sort-regex": "Sort by regex",
     "set": "Set fields",
@@ -223,7 +289,14 @@
     "dnsServers": "DNS servers",
     "dnsServersHint": "One per line. Supports https:// (DoH), tls:// or dot:// (DoT), tried in order.",
     "dnsTimeout": "Query timeout (ms)",
-    "dnsCacheTtl": "Cache TTL (minutes, 0 = no cache)"
+    "dnsCacheTtl": "Cache TTL (minutes, 0 = no cache)",
+    "presets": "Presets",
+    "presetsHint": "Append common processing rules",
+    "preset_cleanAndFlag": "Basic cleanup (Drop useless + Dedupe + Flags)",
+    "preset_dropUseless": "Drop useless info nodes",
+    "preset_dedupe": "Deduplicate by full fingerprint",
+    "preset_mainstreamProtocols": "Keep mainstream protocols (VLESS/Trojan/SS/HY2)",
+    "preset_sortByRegion": "Sort by common regions (HK/TW/JP/SG/US)"
   },
   "settings": {
     "title": "Settings",

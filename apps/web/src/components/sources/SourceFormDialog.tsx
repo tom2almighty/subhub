@@ -2,7 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import type { SourceDto } from '@subhub/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api';
 
@@ -57,6 +58,7 @@ export function SourceFormDialog({
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const [tab, setTab] = useState('basic');
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -75,6 +77,7 @@ export function SourceFormDialog({
 
   useEffect(() => {
     if (!open) return;
+    setTab('basic');
     form.reset({
       name: source?.name ?? '',
       kind: source?.kind ?? 'remote',
@@ -135,109 +138,136 @@ export function SourceFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{source ? t('sources.edit') : t('sources.new')}</DialogTitle>
           <DialogDescription>{t('app.tagline')}</DialogDescription>
         </DialogHeader>
         <form
           className="space-y-4"
-          onSubmit={form.handleSubmit((values) => mutation.mutate(values))}
-        >
-          <div className="space-y-2">
-            <Label htmlFor="source-name">{t('sources.name')}</Label>
-            <Input id="source-name" {...form.register('name')} />
-          </div>
-          <div className="space-y-2">
-            <Label>{t('sources.kind')}</Label>
-            <Select
-              value={kind}
-              onValueChange={(value) => form.setValue('kind', value as 'remote' | 'manual')}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="remote">{t('sources.remote')}</SelectItem>
-                <SelectItem value="manual">{t('sources.manual')}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {kind === 'remote' ? (
-            <>
-              <div className="space-y-2">
-                <Label htmlFor="source-url">{t('sources.url')}</Label>
-                <Input id="source-url" placeholder="https://..." {...form.register('url')} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="source-flow-url">{t('sources.flowUrl')}</Label>
-                <Input
-                  id="source-flow-url"
-                  placeholder="https://..."
-                  {...form.register('flowUrl')}
-                />
-                <p className="text-xs text-muted-foreground">{t('sources.flowUrlHint')}</p>
-              </div>
-            </>
-          ) : (
-            <div className="space-y-2">
-              <Label htmlFor="source-content">{t('sources.content')}</Label>
-              <Textarea
-                id="source-content"
-                rows={7}
-                wrap="soft"
-                placeholder="ss://...&#10;vmess://..."
-                className="max-h-72 min-h-32 resize-y break-all font-mono text-xs leading-relaxed"
-                {...form.register('content')}
-              />
-              <p className="text-xs text-muted-foreground">{t('sources.contentHint')}</p>
-            </div>
+          onSubmit={form.handleSubmit(
+            (values) => mutation.mutate(values),
+            () => setTab('basic'),
           )}
-          <div className="space-y-2">
-            <Label htmlFor="source-ua">{t('sources.userAgent')}</Label>
-            <Input id="source-ua" placeholder="Mozilla/5.0 ..." {...form.register('userAgent')} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="source-headers">{t('sources.headers')}</Label>
-            <Textarea
-              id="source-headers"
-              rows={3}
-              wrap="soft"
-              placeholder='{"X-Header": "value"}'
-              className="max-h-48 min-h-20 resize-y break-all font-mono text-xs leading-relaxed"
-              {...form.register('headersText')}
-            />
-            <p className="text-xs text-muted-foreground">{t('sources.headersHint')}</p>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="source-interval">{t('sources.refreshInterval')}</Label>
-            <Input
-              id="source-interval"
-              type="number"
-              inputMode="numeric"
-              {...form.register('refreshInterval')}
-            />
-          </div>
-          <div className="flex items-center justify-between rounded-md border px-3 py-2">
-            <Label htmlFor="source-noflow" className="text-sm font-normal">
-              {t('sources.noFlow')}
-            </Label>
-            <Switch
-              id="source-noflow"
-              checked={form.watch('noFlow')}
-              onCheckedChange={(checked) => form.setValue('noFlow', checked)}
-            />
-          </div>
-          <div className="flex items-center justify-between rounded-md border px-3 py-2">
-            <Label htmlFor="source-enabled" className="text-sm font-normal">
-              {t('sources.enabled')}
-            </Label>
-            <Switch
-              id="source-enabled"
-              checked={form.watch('enabled')}
-              onCheckedChange={(checked) => form.setValue('enabled', checked)}
-            />
-          </div>
+        >
+          <Tabs value={tab} onValueChange={setTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="basic">{t('sources.tabBasic')}</TabsTrigger>
+              <TabsTrigger value="advanced">{t('sources.tabAdvanced')}</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="basic" className="mt-4 space-y-4 outline-none">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="source-name">{t('sources.name')}</Label>
+                  <Input id="source-name" {...form.register('name')} />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t('sources.kind')}</Label>
+                  <Select
+                    value={kind}
+                    onValueChange={(value) => form.setValue('kind', value as 'remote' | 'manual')}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="remote">{t('sources.remote')}</SelectItem>
+                      <SelectItem value="manual">{t('sources.manual')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {kind === 'remote' ? (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="source-url">{t('sources.url')}</Label>
+                    <Input id="source-url" placeholder="https://..." {...form.register('url')} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="source-flow-url">{t('sources.flowUrl')}</Label>
+                    <Input
+                      id="source-flow-url"
+                      placeholder="https://..."
+                      {...form.register('flowUrl')}
+                    />
+                    <p className="text-xs text-muted-foreground">{t('sources.flowUrlHint')}</p>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-2">
+                  <Label htmlFor="source-content">{t('sources.content')}</Label>
+                  <Textarea
+                    id="source-content"
+                    rows={6}
+                    wrap="soft"
+                    placeholder="ss://...&#10;vmess://..."
+                    className="min-h-28 resize-none break-all font-mono text-xs leading-relaxed"
+                    {...form.register('content')}
+                  />
+                  <p className="text-xs text-muted-foreground">{t('sources.contentHint')}</p>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                <Label htmlFor="source-enabled" className="text-sm font-normal">
+                  {t('sources.enabled')}
+                </Label>
+                <Switch
+                  id="source-enabled"
+                  checked={form.watch('enabled')}
+                  onCheckedChange={(checked) => form.setValue('enabled', checked)}
+                />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="advanced" className="mt-4 space-y-4 outline-none">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="source-ua">{t('sources.userAgent')}</Label>
+                  <Input
+                    id="source-ua"
+                    placeholder="Mozilla/5.0 ..."
+                    {...form.register('userAgent')}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="source-interval">{t('sources.refreshInterval')}</Label>
+                  <Input
+                    id="source-interval"
+                    type="number"
+                    inputMode="numeric"
+                    {...form.register('refreshInterval')}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="source-headers">{t('sources.headers')}</Label>
+                <Textarea
+                  id="source-headers"
+                  rows={3}
+                  wrap="soft"
+                  placeholder='{"X-Header": "value"}'
+                  className="min-h-20 resize-none break-all font-mono text-xs leading-relaxed"
+                  {...form.register('headersText')}
+                />
+                <p className="text-xs text-muted-foreground">{t('sources.headersHint')}</p>
+              </div>
+
+              <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                <Label htmlFor="source-noflow" className="text-sm font-normal">
+                  {t('sources.noFlow')}
+                </Label>
+                <Switch
+                  id="source-noflow"
+                  checked={form.watch('noFlow')}
+                  onCheckedChange={(checked) => form.setValue('noFlow', checked)}
+                />
+              </div>
+            </TabsContent>
+          </Tabs>
 
           <DialogFooter>
             <Button

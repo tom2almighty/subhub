@@ -5,7 +5,7 @@ import {
   createShare,
   deleteShare,
   listShares,
-  updateShareNote,
+  updateShare,
 } from '../services/share-service.js';
 
 function parseId(value: string): number {
@@ -25,7 +25,7 @@ export default function registerShareRoutes(app: FastifyInstance): void {
   app.patch('/api/shares/:id', async (request) => {
     const { id } = request.params as { id: string };
     const input = shareUpdateSchema.parse(request.body);
-    return updateShareNote(parseId(id), input.note);
+    return updateShare(parseId(id), input);
   });
 
   app.delete('/api/shares/:id', async (request) => {

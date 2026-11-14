@@ -1,11 +1,16 @@
 import { applyProcessors, produce } from '@subhub/proxy-core';
 import type {
+  DroppedNodeInfo,
   OutputDto,
   outputCreateSchema,
+  outputDryRunSchema,
   outputUpdateSchema,
   PreviewDto,
+  PreviewNode,
   Processor,
+  ProcessorTraceStep,
   ProxyNode,
+  SourceBuildStat,
   Target,
 } from '@subhub/shared';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
@@ -14,18 +19,21 @@ import { randomToken } from '../auth/password.js';
 import { db } from '../db/index.js';
 import { type OutputRow, outputSources, outputs, shares, sources } from '../db/schema.js';
 import { conflict, isUniqueConstraintError, notFound } from '../errors.js';
+import { invalidateSubscriptionCache } from './cache.js';
 import { getSubscriptionPaths } from './settings-service.js';
+import { deleteSharesByTarget } from './share-service.js';
 
 export type OutputCreateInput = z.infer<typeof outputCreateSchema>;
 export type OutputUpdateInput = z.infer<typeof outputUpdateSchema>;
+export type OutputDryRunInput = z.infer<typeof outputDryRunSchema>;
 
 function now(): string {
   return new Date().toISOString();
 }
 
-function sourceLinks(outputId: number): { id: number; name: string }[] {
+function sourceLinks(outputId: number): { id: number; name: string; enabled: boolean }[] {
   return db
-    .select({ id: sources.id, name: sources.name })
+    .select({ id: sources.id, name: sources.name, enabled: sources.enabled })
     .from(outputSources)
     .innerJoin(sources, eq(sources.id, outputSources.sourceId))
     .where(eq(outputSources.outputId, outputId))
@@ -122,6 +130,7 @@ export function createOutput(input: OutputCreateInput): OutputDto {
       .returning()
       .get();
     setSourceLinks(result.id, input.sourceIds ?? []);
+    invalidateSubscriptionCache();
     return getOutput(result.id);
   } catch (error) {
     if (isUniqueConstraintError(error)) {
@@ -148,47 +157,162 @@ export function updateOutput(id: number, input: OutputUpdateInput): OutputDto {
     }
     throw error;
   }
+  invalidateSubscriptionCache();
   return getOutput(id);
 }
 
 export function deleteOutput(id: number): void {
   findOutput(id);
+  deleteSharesByTarget('output', id);
   db.delete(outputs).where(eq(outputs.id, id)).run();
+  invalidateSubscriptionCache();
+}
+
+function nodeEndpointKey(node: ProxyNode): string {
+  return `${node.type}|${node.server ?? node.hostname ?? ''}|${node.port ?? ''}`;
+}
+
+async function resolveSourcesByIds(
+  sourceIds: number[],
+  target: Target,
+): Promise<{
+  nodes: ProxyNode[];
+  warnings: string[];
+  inputCount: number;
+  sourceStats: SourceBuildStat[];
+  resolveSourceName: (node: ProxyNode) => string | undefined;
+}> {
+  if (sourceIds.length === 0) return { nodes: [], warnings: [], inputCount: 0, sourceStats: [] };
+  const rows = db.select().from(sources).where(inArray(sources.id, sourceIds)).all();
+  const byId = new Map(rows.map((item) => [item.id, item]));
+  const nodes: ProxyNode[] = [];
+  const warnings: string[] = [];
+  const sourceStats: SourceBuildStat[] = [];
+  const byRef = new WeakMap<ProxyNode, string>();
+  const byEndpoint = new Map<string, string>();
+  let inputCount = 0;
+  for (const sourceId of sourceIds) {
+    const source = byId.get(sourceId);
+    if (!source) continue;
+    if (!source.enabled) {
+      sourceStats.push({
+        id: source.id,
+        name: source.name,
+        enabled: false,
+        rawCount: source.nodes.length,
+        afterCount: 0,
+      });
+      continue;
+    }
+    inputCount += source.nodes.length;
+    const processed = await applyProcessors(source.nodes, source.processors ?? [], target, {
+      onWarning: (message) => warnings.push(`${source.name}: ${message}`),
+    });
+    sourceStats.push({
+      id: source.id,
+      name: source.name,
+      enabled: true,
+      rawCount: source.nodes.length,
+      afterCount: processed.length,
+    });
+    for (const item of processed) {
+      byRef.set(item, source.name);
+      const key = nodeEndpointKey(item);
+      if (!byEndpoint.has(key)) byEndpoint.set(key, source.name);
+    }
+    nodes.push(...processed);
+  }
+  return {
+    nodes,
+    warnings,
+    inputCount,
+    sourceStats,
+    resolveSourceName: (node: ProxyNode) => byRef.get(node) ?? byEndpoint.get(nodeEndpointKey(node)),
+  };
 }
 
 export async function resolveOutputNodes(
   row: OutputRow,
   target: Target,
-): Promise<{ nodes: ProxyNode[]; warnings: string[] }> {
+): Promise<{
+  nodes: ProxyNode[];
+  warnings: string[];
+  inputCount: number;
+  sourceStats: SourceBuildStat[];
+}> {
   const linked = db
     .select({ sourceId: outputSources.sourceId })
     .from(outputSources)
     .where(eq(outputSources.outputId, row.id))
     .orderBy(asc(outputSources.position))
     .all();
-  if (linked.length === 0) return { nodes: [], warnings: [] };
-  const rows = db
-    .select()
-    .from(sources)
-    .where(
-      inArray(
-        sources.id,
-        linked.map((item) => item.sourceId),
-      ),
-    )
-    .all();
-  const byId = new Map(rows.map((item) => [item.id, item]));
-  const nodes: ProxyNode[] = [];
-  const warnings: string[] = [];
-  for (const item of linked) {
-    const source = byId.get(item.sourceId);
-    if (!source) continue;
-    const processed = await applyProcessors(source.nodes, source.processors ?? [], target, {
-      onWarning: (message) => warnings.push(`${source.name}: ${message}`),
-    });
-    nodes.push(...processed);
-  }
-  return { nodes, warnings };
+  return resolveSourcesByIds(
+    linked.map((item) => item.sourceId),
+    target,
+  );
+}
+
+function toPreviewNodes(
+  nodes: ProxyNode[],
+  resolveSourceName?: (node: ProxyNode) => string | undefined,
+): PreviewNode[] {
+  return nodes.map((node) => ({
+    name: node.name,
+    type: node.type,
+    server: node.server,
+    port: node.port,
+    hostname: node.hostname,
+    'control-url': node['control-url'],
+    tls: node.tls,
+    network: node.network,
+    udp: node.udp,
+    sni: node.sni,
+    servername: node.servername,
+    alpn: node.alpn,
+    flow: node.flow,
+    cipher: node.cipher,
+    obfs: node.obfs,
+    ports: node.ports,
+    sourceName: resolveSourceName?.(node),
+    raw: node,
+  }));
+}
+
+async function executePipeline(params: {
+  sourceIds: number[];
+  processors: Processor[];
+  target: Target;
+}): Promise<{
+  target: Target;
+  nodes: ProxyNode[];
+  content: string;
+  warnings: string[];
+  dropped: DroppedNodeInfo[];
+  inputCount: number;
+  sourceStats: SourceBuildStat[];
+  trace: ProcessorTraceStep[];
+  resolveSourceName: (node: ProxyNode) => string | undefined;
+}> {
+  const collected = await resolveSourcesByIds(params.sourceIds, params.target);
+  const warnings = [...collected.warnings];
+  const trace: ProcessorTraceStep[] = [];
+  const processed = await applyProcessors(collected.nodes, params.processors, params.target, {
+    onWarning: (message) => warnings.push(message),
+    onStep: (step) => trace.push(step),
+    resolveSourceName: collected.resolveSourceName,
+  });
+  const produced = produce(processed, params.target);
+  return {
+    target: params.target,
+    nodes: processed,
+    content: produced.content,
+    warnings: [...warnings, ...produced.warnings],
+    dropped: produced.dropped,
+    inputCount: collected.inputCount,
+    sourceStats: collected.sourceStats,
+    trace,
+    resolveSourceName: collected.resolveSourceName,
+  };
 }
 
 export async function buildOutput(
@@ -200,22 +324,26 @@ export async function buildOutput(
   nodes: ProxyNode[];
   content: string;
   warnings: string[];
+  dropped: DroppedNodeInfo[];
+  inputCount: number;
+  sourceStats: SourceBuildStat[];
+  trace: ProcessorTraceStep[];
+  resolveSourceName: (node: ProxyNode) => string | undefined;
 }> {
   const output = findOutput(id);
   const target = targetOverride ?? output.target;
-  const collected = await resolveOutputNodes(output, target);
-  const warnings = [...collected.warnings];
-  const processed = await applyProcessors(collected.nodes, output.processors ?? [], target, {
-    onWarning: (message) => warnings.push(message),
-  });
-  const produced = produce(processed, target);
-  return {
-    output,
+  const linked = db
+    .select({ sourceId: outputSources.sourceId })
+    .from(outputSources)
+    .where(eq(outputSources.outputId, output.id))
+    .orderBy(asc(outputSources.position))
+    .all();
+  const built = await executePipeline({
+    sourceIds: linked.map((item) => item.sourceId),
+    processors: output.processors ?? [],
     target,
-    nodes: processed,
-    content: produced.content,
-    warnings: [...warnings, ...produced.warnings],
-  };
+  });
+  return { output, ...built };
 }
 
 export async function previewOutput(id: number, target?: Target): Promise<PreviewDto> {
@@ -223,14 +351,30 @@ export async function previewOutput(id: number, target?: Target): Promise<Previe
   return {
     target: built.target,
     count: built.nodes.length,
-    nodes: built.nodes.map((node) => ({
-      name: node.name,
-      type: node.type,
-      server: node.server,
-      port: node.port,
-      hostname: node.hostname,
-      'control-url': node['control-url'],
-    })),
+    inputCount: built.inputCount,
+    sourceStats: built.sourceStats,
+    trace: built.trace,
+    dropped: built.dropped,
+    nodes: toPreviewNodes(built.nodes, built.resolveSourceName),
+    content: built.content,
+    warnings: built.warnings,
+  };
+}
+
+export async function dryRunOutput(input: OutputDryRunInput): Promise<PreviewDto> {
+  const built = await executePipeline({
+    sourceIds: input.sourceIds,
+    processors: input.processors,
+    target: input.target,
+  });
+  return {
+    target: built.target,
+    count: built.nodes.length,
+    inputCount: built.inputCount,
+    sourceStats: built.sourceStats,
+    trace: built.trace,
+    dropped: built.dropped,
+    nodes: toPreviewNodes(built.nodes, built.resolveSourceName),
     content: built.content,
     warnings: built.warnings,
   };

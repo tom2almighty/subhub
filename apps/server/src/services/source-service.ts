@@ -2,6 +2,7 @@ import { applyProcessors, parseNodes, produce } from '@subhub/proxy-core';
 import {
   type FlowInfo,
   type ProxyNode,
+  type RefreshAllResult,
   SOURCE_DEFAULT_TARGET,
   type SourceDto,
   type sourceCreateSchema,
@@ -14,8 +15,10 @@ import { randomToken } from '../auth/password.js';
 import { db } from '../db/index.js';
 import { type SourceRow, sources } from '../db/schema.js';
 import { conflict, isUniqueConstraintError, notFound } from '../errors.js';
+import { invalidateSubscriptionCache } from './cache.js';
 import { fetchFlow, fetchSubscription } from './fetcher.js';
 import { getSubscriptionPaths } from './settings-service.js';
+import { deleteSharesByTarget } from './share-service.js';
 
 export type SourceCreateInput = z.infer<typeof sourceCreateSchema>;
 export type SourceUpdateInput = z.infer<typeof sourceUpdateSchema>;
@@ -82,6 +85,7 @@ export async function buildSource(
   const warnings: string[] = [];
   const nodes = await applyProcessors(source.nodes, source.processors ?? [], target, {
     onWarning: (message) => warnings.push(message),
+    resolveSourceName: () => source.name,
   });
   const produced = produce(nodes, target);
   return {
@@ -100,6 +104,7 @@ export async function getSourceNodes(
   const warnings: string[] = [];
   const nodes = await applyProcessors(row.nodes, row.processors ?? [], target, {
     onWarning: (message) => warnings.push(message),
+    resolveSourceName: () => row.name,
   });
   return { nodes, warnings };
 }
@@ -135,6 +140,7 @@ export function createSource(input: SourceCreateInput): SourceDto {
     } else {
       void refreshSource(result.id, { force: true }).catch(() => undefined);
     }
+    invalidateSubscriptionCache();
     return getSource(result.id);
   } catch (error) {
     if (isUniqueConstraintError(error)) {
@@ -159,7 +165,15 @@ export function updateSource(id: number, input: SourceUpdateInput): SourceDto {
   if (input.enabled !== undefined) patch.enabled = input.enabled;
   if (input.processors !== undefined) patch.processors = input.processors;
   if (input.content !== undefined) patch.raw = input.content;
-  if (input.content !== undefined && (input.kind ?? existing.kind) === 'manual') {
+  if (input.nodes !== undefined && (input.kind ?? existing.kind) === 'manual') {
+    patch.nodes = input.nodes;
+    patch.warnings = [];
+    patch.fetchedAt = now();
+    patch.lastError = null;
+    if (input.content === undefined) {
+      patch.raw = produce(input.nodes, 'uri').content;
+    }
+  } else if (input.content !== undefined && (input.kind ?? existing.kind) === 'manual') {
     patch.nodes = [];
     patch.warnings = [];
   }
@@ -173,7 +187,11 @@ export function updateSource(id: number, input: SourceUpdateInput): SourceDto {
     throw error;
   }
 
-  if ((input.kind ?? existing.kind) === 'manual' && input.content !== undefined) {
+  if (
+    (input.kind ?? existing.kind) === 'manual' &&
+    input.content !== undefined &&
+    input.nodes === undefined
+  ) {
     applyManualContent(id, input.content);
   } else if (
     (input.kind ?? existing.kind) === 'remote' &&
@@ -182,6 +200,7 @@ export function updateSource(id: number, input: SourceUpdateInput): SourceDto {
     void refreshSource(id, { force: true }).catch(() => undefined);
   }
 
+  invalidateSubscriptionCache();
   return getSource(id);
 }
 
@@ -207,6 +226,7 @@ export async function refreshSource(
   const row = findSource(id);
   if (row.kind === 'manual') {
     applyManualContent(id, row.raw);
+    invalidateSubscriptionCache();
     return getSource(id);
   }
   try {
@@ -240,6 +260,7 @@ export async function refreshSource(
         .where(eq(sources.id, id))
         .run();
     }
+    invalidateSubscriptionCache();
     return getSource(id);
   } catch (error) {
     const message = error instanceof Error ? error.message : `${error}`;
@@ -251,9 +272,38 @@ export async function refreshSource(
   }
 }
 
+export async function refreshAllSources(): Promise<RefreshAllResult> {
+  const rows = db.select().from(sources).where(eq(sources.enabled, true)).all();
+  const remote = rows.filter((row) => row.kind === 'remote');
+  let refreshed = 0;
+  const failed: RefreshAllResult['failed'] = [];
+
+  for (let index = 0; index < remote.length; index += 3) {
+    const chunk = remote.slice(index, index + 3);
+    await Promise.all(
+      chunk.map(async (source) => {
+        try {
+          await refreshSource(source.id, { force: true });
+          refreshed += 1;
+        } catch (error) {
+          failed.push({
+            id: source.id,
+            name: source.name,
+            error: error instanceof Error ? error.message : `${error}`,
+          });
+        }
+      }),
+    );
+  }
+
+  return { total: remote.length, refreshed, failed };
+}
+
 export function deleteSource(id: number): void {
   findSource(id);
+  deleteSharesByTarget('source', id);
   db.delete(sources).where(eq(sources.id, id)).run();
+  invalidateSubscriptionCache();
 }
 
 export function dueSources(nowDate = new Date()): SourceRow[] {

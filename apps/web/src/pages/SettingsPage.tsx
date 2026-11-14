@@ -6,11 +6,10 @@ import {
   subscriptionPathsSchema,
 } from '@subhub/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowUpRight, Loader2, LogOut } from 'lucide-react';
+import { ArrowUpRight, Loader2 } from 'lucide-react';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import type { z } from 'zod';
 import { PageHeader } from '@/components/common/PageHeader';
@@ -36,7 +35,6 @@ const GITHUB_REPO = 'tom2almighty/subhub';
 
 export function SettingsPage() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const form = useForm<PasswordValues>({
@@ -77,24 +75,12 @@ export function SettingsPage() {
     onError: (error: Error) => toast.error(error.message),
   });
 
-  const logout = useMutation({
-    mutationFn: api.logout,
-    onSuccess: () => {
-      queryClient.clear();
-      navigate('/login', { replace: true });
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader title={t('settings.title')} />
 
-      <Tabs defaultValue="account" className="min-h-0 flex-1 flex flex-col">
-        <TabsList className="w-full shrink-0 grid grid-cols-4 sm:w-fit sm:inline-flex">
-          <TabsTrigger value="account" className="text-xs sm:text-sm px-2 sm:px-4">
-            {t('settings.tabs.account')}
-          </TabsTrigger>
+      <Tabs defaultValue="paths" className="min-h-0 flex-1 flex flex-col">
+        <TabsList className="w-full shrink-0 grid grid-cols-3 sm:w-fit sm:inline-flex">
           <TabsTrigger value="paths" className="text-xs sm:text-sm px-2 sm:px-4">
             {t('settings.tabs.paths')}
           </TabsTrigger>
@@ -106,33 +92,13 @@ export function SettingsPage() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="account" className="mt-4 min-h-0 flex-1 overflow-y-auto outline-none">
-          <Card className="max-w-xl">
-            <CardHeader>
-              <CardTitle>{t('settings.account')}</CardTitle>
-              <CardDescription>{t('settings.singleUserHint')}</CardDescription>
-            </CardHeader>
-            <CardFooter className="pt-2">
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => logout.mutate()}
-                disabled={logout.isPending}
-              >
-                <LogOut className="size-4 mr-1.5" />
-                {t('auth.logout')}
-              </Button>
-            </CardFooter>
-          </Card>
-        </TabsContent>
-
         <TabsContent value="paths" className="mt-4 min-h-0 flex-1 overflow-y-auto outline-none">
           <Card className="max-w-xl">
             <CardHeader>
               <CardTitle>{t('settings.paths')}</CardTitle>
               <CardDescription>{t('settings.pathsHint')}</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pb-5 sm:pb-6">
               <form
                 id="paths-form"
                 className="space-y-4"
@@ -140,17 +106,13 @@ export function SettingsPage() {
               >
                 <div className="space-y-1.5">
                   <Label htmlFor="private-path">{t('settings.privatePath')}</Label>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-mono text-muted-foreground">/</span>
-                    <Input
-                      id="private-path"
-                      autoComplete="off"
-                      spellCheck={false}
-                      className="font-mono text-sm"
-                      {...pathsForm.register('privatePath')}
-                    />
-                    <span className="shrink-0 font-mono text-xs text-muted-foreground">/…</span>
-                  </div>
+                  <Input
+                    id="private-path"
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="font-mono text-sm"
+                    {...pathsForm.register('privatePath')}
+                  />
                   {pathsForm.formState.errors.privatePath ? (
                     <p className="text-xs text-destructive">
                       {pathsForm.formState.errors.privatePath.message}
@@ -159,17 +121,13 @@ export function SettingsPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="share-path">{t('settings.sharePath')}</Label>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-mono text-muted-foreground">/</span>
-                    <Input
-                      id="share-path"
-                      autoComplete="off"
-                      spellCheck={false}
-                      className="font-mono text-sm"
-                      {...pathsForm.register('sharePath')}
-                    />
-                    <span className="shrink-0 font-mono text-xs text-muted-foreground">/…</span>
-                  </div>
+                  <Input
+                    id="share-path"
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="font-mono text-sm"
+                    {...pathsForm.register('sharePath')}
+                  />
                   {pathsForm.formState.errors.sharePath ? (
                     <p className="text-xs text-destructive">
                       {pathsForm.formState.errors.sharePath.message}
@@ -179,7 +137,7 @@ export function SettingsPage() {
                 <p className="text-xs text-muted-foreground">{t('settings.pathHint')}</p>
               </form>
             </CardContent>
-            <CardFooter className="justify-end border-t pt-4">
+            <CardFooter className="justify-end border-t pt-4 sm:pt-4">
               <Button
                 type="submit"
                 form="paths-form"

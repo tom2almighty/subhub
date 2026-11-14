@@ -69,9 +69,12 @@ CREATE TABLE IF NOT EXISTS shares (
   target_id INTEGER NOT NULL,
   token TEXT NOT NULL UNIQUE,
   note TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  allowed_targets TEXT NOT NULL DEFAULT '[]',
   expires_at TEXT,
   max_uses INTEGER NOT NULL DEFAULT 0,
   used_count INTEGER NOT NULL DEFAULT 0,
+  last_used_at TEXT,
   created_at TEXT NOT NULL
 );
 
@@ -114,6 +117,15 @@ export function migrate(): void {
     `);
   }
   sqlite.exec('CREATE INDEX IF NOT EXISTS shares_target_idx ON shares(kind, target_id)');
+  if (!hasColumn('shares', 'enabled')) {
+    sqlite.exec('ALTER TABLE shares ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1');
+  }
+  if (!hasColumn('shares', 'allowed_targets')) {
+    sqlite.exec("ALTER TABLE shares ADD COLUMN allowed_targets TEXT NOT NULL DEFAULT '[]'");
+  }
+  if (!hasColumn('shares', 'last_used_at')) {
+    sqlite.exec('ALTER TABLE shares ADD COLUMN last_used_at TEXT');
+  }
   if (!hasColumn('sources', 'token')) {
     sqlite.exec("ALTER TABLE sources ADD COLUMN token TEXT NOT NULL DEFAULT ''");
   }

@@ -1,8 +1,9 @@
 import { TARGET_LABELS, TARGETS, type Target } from '@subhub/shared';
-import { Check, ChevronDown, Copy } from 'lucide-react';
+import { Check, ChevronDown, Copy, QrCode } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { QrCodeDialog } from '@/components/common/QrCodeDialog';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -12,7 +13,24 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
+
+const DOWNLOAD_STORAGE_KEY = 'subhub.copy.download';
+
+export function buildSubscriptionPath(
+  url: string,
+  target: Target,
+  defaultTarget: Target,
+  download: boolean,
+): string {
+  const params = new URLSearchParams();
+  if (target !== defaultTarget) params.set('target', target);
+  if (!download) params.set('download', '0');
+  const qs = params.toString();
+  return `${url}${qs ? `?${qs}` : ''}`;
+}
 
 export function CopySubscription({
   url,
@@ -29,9 +47,26 @@ export function CopySubscription({
 }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
+  const [download, setDownload] = useState(() => {
+    try {
+      return localStorage.getItem(DOWNLOAD_STORAGE_KEY) !== '0';
+    } catch {
+      return true;
+    }
+  });
+
+  function toggleDownload(checked: boolean) {
+    setDownload(checked);
+    try {
+      localStorage.setItem(DOWNLOAD_STORAGE_KEY, checked ? '1' : '0');
+    } catch {
+      // ignore storage errors
+    }
+  }
 
   async function copy(target: Target) {
-    const path = target === defaultTarget ? url : `${url}?target=${target}`;
+    const path = buildSubscriptionPath(url, target, defaultTarget, download);
     try {
       await navigator.clipboard.writeText(`${window.location.origin}${path}`);
       setCopied(true);
@@ -43,8 +78,9 @@ export function CopySubscription({
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
         <Button
           type="button"
           variant={variant}
@@ -54,7 +90,7 @@ export function CopySubscription({
           title={showLabel ? undefined : t('outputs.copyUrl')}
         >
           {copied ? (
-            <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+            <Check className="size-3.5 text-success" />
           ) : (
             <Copy className="size-3.5" />
           )}
@@ -64,7 +100,24 @@ export function CopySubscription({
           ) : null}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-52 p-1.5 shadow-lg">
+      <DropdownMenuContent align="end" className="w-56 p-1.5 shadow-lg">
+        <div
+          className="flex items-center justify-between gap-2 rounded-sm px-2 py-1.5"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Label
+            htmlFor="copy-download-switch"
+            className="cursor-pointer text-xs font-normal text-muted-foreground"
+          >
+            {t('outputs.downloadAttachment')}
+          </Label>
+          <Switch
+            id="copy-download-switch"
+            checked={download}
+            onCheckedChange={toggleDownload}
+          />
+        </div>
+        <DropdownMenuSeparator />
         <DropdownMenuLabel className="px-2 py-1.5 text-xs text-muted-foreground font-normal">
           {t('outputs.platform')}
         </DropdownMenuLabel>
@@ -87,7 +140,23 @@ export function CopySubscription({
             <span>{TARGET_LABELS[target]}</span>
           </DropdownMenuItem>
         ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="flex cursor-pointer items-center gap-2 py-2 text-sm font-medium text-primary focus:text-primary"
+          onSelect={() => setQrOpen(true)}
+        >
+          <QrCode className="size-3.5" />
+          <span>{t('outputs.showQr')}</span>
+        </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <QrCodeDialog
+        open={qrOpen}
+        onOpenChange={setQrOpen}
+        url={url}
+        defaultTarget={defaultTarget}
+        download={download}
+      />
+    </>
   );
 }

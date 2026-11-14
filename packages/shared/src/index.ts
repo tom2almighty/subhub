@@ -21,6 +21,7 @@ export const TARGETS = [
   'surge',
   'mihomo',
   'stash',
+  'egern',
   'loon',
   'qx',
   'shadowrocket',
@@ -38,6 +39,7 @@ export const TARGET_LABELS: Record<Target, string> = {
   surge: 'Surge',
   mihomo: 'Mihomo',
   stash: 'Stash',
+  egern: 'Egern',
   loon: 'Loon',
   qx: 'Quantumult X',
   shadowrocket: 'Shadowrocket',
@@ -314,6 +316,16 @@ const flagSchema = z.object({
   }),
 });
 
+const sourceTagSchema = z.object({
+  id: z.string(),
+  type: z.literal('source-tag'),
+  disabled: z.boolean().optional(),
+  args: z.object({
+    position: z.enum(['prefix', 'suffix']).default('prefix'),
+    format: z.string().default('[{{source}}] '),
+  }),
+});
+
 const dnsServerSchema = z
   .string()
   .trim()
@@ -348,6 +360,7 @@ export const processorSchema = z.discriminatedUnion('type', [
   scriptFilterSchema,
   addSchema,
   flagSchema,
+  sourceTagSchema,
   dnsSchema,
 ]);
 
@@ -373,7 +386,9 @@ export const sourceCreateSchema = z.object({
   processors: z.array(processorSchema).default([]),
 });
 
-export const sourceUpdateSchema = sourceCreateSchema.partial();
+export const sourceUpdateSchema = sourceCreateSchema.partial().extend({
+  nodes: z.array(proxySchema).optional(),
+});
 
 export const outputCreateSchema = z.object({
   name: z.string().trim().min(1).max(120),
@@ -385,6 +400,16 @@ export const outputCreateSchema = z.object({
 
 export const outputUpdateSchema = outputCreateSchema.partial();
 
+export const outputDryRunSchema = z.object({
+  target: targetSchema,
+  sourceIds: z.array(z.number().int().positive()).default([]),
+  processors: z.array(processorSchema).default([]),
+});
+
+export const parseInspectSchema = z.object({
+  content: z.string().default(''),
+});
+
 export const shareTargetKindSchema = z.enum(['source', 'output']);
 export type ShareTargetKind = z.infer<typeof shareTargetKindSchema>;
 
@@ -394,10 +419,14 @@ export const shareCreateSchema = z.object({
   note: z.string().trim().max(200).default(''),
   expiresInDays: z.number().int().min(0).max(3650).default(0),
   maxUses: z.number().int().min(0).max(1_000_000).default(0),
+  enabled: z.boolean().default(true),
+  allowedTargets: z.array(targetSchema).default([]),
 });
 
 export const shareUpdateSchema = z.object({
-  note: z.string().trim().max(200),
+  note: z.string().trim().max(200).optional(),
+  enabled: z.boolean().optional(),
+  allowedTargets: z.array(targetSchema).optional(),
 });
 
 export const SUBSCRIPTION_PATH_PATTERN = /^[a-zA-Z0-9_-]+$/;
@@ -469,7 +498,7 @@ export interface OutputDto {
   target: Target;
   url: string;
   sourceIds: number[];
-  sources: { id: number; name: string }[];
+  sources: { id: number; name: string; enabled: boolean }[];
   processors: Processor[];
   enabled: boolean;
   shareCount: number;
@@ -486,9 +515,12 @@ export interface ShareDto {
   token?: string;
   url: string;
   note: string;
+  enabled: boolean;
+  allowedTargets: Target[];
   expiresAt: string | null;
   maxUses: number;
   usedCount: number;
+  lastUsedAt: string | null;
   createdAt: string;
 }
 
@@ -499,14 +531,65 @@ export interface PreviewNode {
   port?: number;
   hostname?: string;
   'control-url'?: string;
+  tls?: boolean;
+  network?: string;
+  udp?: boolean;
+  sni?: string;
+  servername?: string;
+  alpn?: string[];
+  flow?: string;
+  cipher?: string;
+  obfs?: string;
+  ports?: string;
+  sourceName?: string;
+  raw?: ProxyNode;
+}
+
+export interface ProcessorTraceStep {
+  id: string;
+  type: Processor['type'];
+  disabled?: boolean;
+  beforeCount: number;
+  afterCount: number;
+  durationMs: number;
+}
+
+export interface SourceBuildStat {
+  id: number;
+  name: string;
+  enabled: boolean;
+  rawCount: number;
+  afterCount: number;
+}
+
+export interface DroppedNodeInfo {
+  name: string;
+  type: ProxyType;
+  reason: string;
+}
+
+export interface ParseInspectDto {
+  format: string;
+  nodes: ProxyNode[];
+  warnings: string[];
 }
 
 export interface PreviewDto {
   target: Target;
   count: number;
+  inputCount?: number;
+  sourceStats?: SourceBuildStat[];
+  trace?: ProcessorTraceStep[];
+  dropped?: DroppedNodeInfo[];
   nodes: PreviewNode[];
   content: string;
   warnings: string[];
+}
+
+export interface RefreshAllResult {
+  total: number;
+  refreshed: number;
+  failed: { id: number; name: string; error: string }[];
 }
 
 export interface ApiError {

@@ -74,9 +74,12 @@ export const shares = sqliteTable('shares', {
   targetId: integer('target_id').notNull(),
   token: text('token').notNull().unique(),
   note: text('note').notNull().default(''),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  allowedTargets: text('allowed_targets', { mode: 'json' }).$type<Target[]>().notNull(),
   expiresAt: text('expires_at'),
   maxUses: integer('max_uses').notNull().default(0),
   usedCount: integer('used_count').notNull().default(0),
+  lastUsedAt: text('last_used_at'),
   createdAt: text('created_at').notNull(),
 });
 

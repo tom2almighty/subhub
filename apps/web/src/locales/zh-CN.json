@@ -27,6 +27,7 @@
     "search": "搜索",
     "none": "无",
     "enabled": "启用",
+    "enable": "启用",
     "disabled": "停用",
     "unlimited": "不限",
     "never": "从未",
@@ -37,7 +38,17 @@
     "collapse": "收起",
     "actions": "操作",
     "list": "列表",
-    "cards": "卡片"
+    "cards": "卡片",
+    "all": "全部",
+    "duplicate": "复制一份",
+    "default": "默认"
+  },
+  "command": {
+    "navigation": "页面跳转",
+    "actions": "快捷操作",
+    "toggleTheme": "切换深色/浅色主题",
+    "placeholder": "搜索节点源、聚合订阅或操作…",
+    "empty": "没有匹配的结果"
   },
   "auth": {
     "login": "登录",
@@ -93,7 +104,39 @@
     "used": "已用",
     "total": "总量",
     "directSubscription": "节点源订阅",
-    "directSubscriptionHint": "创建后立即可用。默认输出 URI，复制时选择平台会自动追加 ?target= 参数。"
+    "directSubscriptionHint": "创建后立即可用。默认输出 URI，复制时选择平台会自动追加 ?target= 参数。",
+    "refreshAll": "全部刷新",
+    "refreshAllResult": "已刷新 {{refreshed}}/{{total}} 个远程节点源",
+    "refreshAllPartial": "已刷新 {{refreshed}}/{{total}} 个，{{failed}} 个失败",
+    "errorStatus": "异常",
+    "searchPlaceholder": "搜索节点源名称…",
+    "filter_all": "全部",
+    "filter_enabled": "已启用",
+    "filter_error": "有异常",
+    "expired": "已过期",
+    "daysLeft": "剩 {{count}} 天",
+    "tabBasic": "基本信息",
+    "tabAdvanced": "请求与同步",
+    "addNode": "添加节点",
+    "editNode": "编辑节点",
+    "batchImport": "批量导入",
+    "nodeFormHint": "可视化配置单个节点参数，保存后自动生成标准节点数据。",
+    "nodeTabBasic": "基础连接",
+    "nodeTabAuth": "认证参数",
+    "nodeTabTransport": "传输与 TLS",
+    "nodeNameRequired": "请填写节点名称",
+    "nodeEndpointRequired": "请填写服务器地址和端口",
+    "skipCertVerify": "跳过证书校验",
+    "inspecting": "正在解析节点...",
+    "parsedCount": "识别出 {{count}} 个节点（格式：{{format}}）",
+    "importMode": "导入方式",
+    "importAppend": "追加到现有节点",
+    "importReplace": "覆盖现有节点",
+    "confirmImport": "确认导入",
+    "duplicateFound": "检测到 {{count}} 个地址与端口重复的节点",
+    "dedupeNow": "一键去重",
+    "selectedCount": "已选择 {{count}} 个节点",
+    "deleteSelected": "删除所选"
   },
   "shares": {
     "title": "分享",
@@ -109,7 +152,10 @@
     "expiresInDays": "有效期（天，0 为永久）",
     "maxUses": "最大使用次数（0 为不限）",
     "create": "创建分享链接",
-    "summary": "{{count}} 个分享链接"
+    "summary": "{{count}} 个分享链接",
+    "allowedTargets": "允许的平台",
+    "allowedTargetsHint": "留空表示允许所有平台，选中则限制只能拉取指定格式。",
+    "lastUsedAt": "最近访问"
   },
   "outputs": {
     "title": "聚合订阅",
@@ -157,7 +203,23 @@
     "editNote": "修改备注",
     "saveNote": "保存备注",
     "searchNodes": "搜索节点名称或地址",
-    "nodeResults": "{{count}} 个结果"
+    "nodeResults": "{{count}} 个结果",
+    "searchPlaceholder": "搜索聚合名称、平台或节点源…",
+    "pipeline": "构建管线",
+    "showQr": "订阅二维码",
+    "downloadAttachment": "作为附件下载",
+    "cardView": "卡片视图",
+    "textView": "文本视图",
+    "droppedNodes": "不兼容被跳过的节点",
+    "sourceDisabledBadge": "已停用",
+    "qrTitle": "扫码导入订阅",
+    "qrHint": "使用代理客户端扫描二维码，或切换目标平台后复制。",
+    "qrTooLong": "订阅链接过长，无法生成二维码"
+  },
+  "nodes": {
+    "connection": "连接信息",
+    "security": "安全与 TLS",
+    "rawConfig": "节点完整配置 (JSON)"
   },
   "processors": {
     "filter": "正则过滤",
@@ -166,6 +228,10 @@
     "dedupe": "去重",
     "rename": "正则重命名",
     "prefix-suffix": "前后缀",
+    "source-tag": "订阅源标识",
+    "sourceTagPosition": "添加位置",
+    "sourceTagFormat": "标识格式",
+    "sourceTagHint": "使用 {{source}} 代表节点所属订阅源名称，例如 [{{source}}] 或 - {{source}}",
     "sort": "排序",
     "sort-regex": "按正则排序",
     "set": "设置字段",
@@ -218,7 +284,14 @@
     "dnsServers": "DNS 服务器",
     "dnsServersHint": "每行一个，支持 https://（DoH）、tls:// 或 dot://（DoT），按顺序尝试。",
     "dnsTimeout": "单次查询超时（毫秒）",
-    "dnsCacheTtl": "缓存时间（分钟，0 为不缓存）"
+    "dnsCacheTtl": "缓存时间（分钟，0 为不缓存）",
+    "presets": "常用预设",
+    "presetsHint": "一键追加常用处理规则",
+    "preset_cleanAndFlag": "基础整理（去无效 + 去重 + 加国旗）",
+    "preset_dropUseless": "过滤无效信息节点",
+    "preset_dedupe": "按完整指纹去重",
+    "preset_mainstreamProtocols": "仅保留主流协议 (VLESS/Trojan/SS/HY2)",
+    "preset_sortByRegion": "按常见地区排序 (港/台/日/新/美)"
   },
   "settings": {
     "title": "设置",

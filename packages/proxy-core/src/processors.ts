@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
-import type { Processor, ProxyNode, Target } from '@subhub/shared';
+import type { Processor, ProcessorTraceStep, ProxyNode, Target } from '@subhub/shared';
 import _ from 'lodash';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { resolveNodeServers } from './dns.js';
@@ -119,11 +119,20 @@ function fingerprint(node: ProxyNode): string {
     node.type,
     node.server,
     node.port,
+    node.username,
     node.uuid,
     node.password,
     node.cipher,
     node.network,
+    node.tls,
+    node.sni ?? node.servername,
+    node.flow,
+    node.obfs,
+    node['obfs-password'],
     node['ws-opts']?.path,
+    node['grpc-opts']?.['grpc-service-name'],
+    node['xhttp-opts']?.path,
+    node['reality-opts']?.['public-key'],
   ]);
 }
 
@@ -145,6 +154,8 @@ const USELESS_PATTERNS = [
 
 export interface ProcessorOptions {
   onWarning?: (message: string) => void;
+  onStep?: (step: ProcessorTraceStep) => void;
+  resolveSourceName?: (node: ProxyNode) => string | undefined;
 }
 
 export async function applyProcessors(
@@ -155,7 +166,19 @@ export async function applyProcessors(
 ): Promise<ProxyNode[]> {
   let nodes = structuredClone(input);
   for (const processor of processors) {
-    if (processor.disabled) continue;
+    const beforeCount = nodes.length;
+    if (processor.disabled) {
+      options.onStep?.({
+        id: processor.id,
+        type: processor.type,
+        disabled: true,
+        beforeCount,
+        afterCount: beforeCount,
+        durationMs: 0,
+      });
+      continue;
+    }
+    const startedAt = performance.now();
     switch (processor.type) {
       case 'filter': {
         const regex = compileRegex(processor.args.pattern, processor.args.flags);
@@ -206,6 +229,21 @@ export async function applyProcessors(
           ...node,
           name: `${processor.args.prefix}${node.name}${processor.args.suffix}`,
         }));
+        break;
+      }
+      case 'source-tag': {
+        const { position, format } = processor.args;
+        nodes = nodes.map((node) => {
+          const sourceName = options.resolveSourceName?.(node);
+          if (!sourceName) return node;
+          const tag = format.includes('{{source}}')
+            ? format.replaceAll('{{source}}', sourceName)
+            : `${format}${sourceName}`;
+          return {
+            ...node,
+            name: position === 'suffix' ? `${node.name}${tag}` : `${tag}${node.name}`,
+          };
+        });
         break;
       }
       case 'sort': {
@@ -283,6 +321,13 @@ export async function applyProcessors(
       default:
         break;
     }
+    options.onStep?.({
+      id: processor.id,
+      type: processor.type,
+      beforeCount,
+      afterCount: nodes.length,
+      durationMs: Math.round((performance.now() - startedAt) * 100) / 100,
+    });
   }
   return nodes;
 }

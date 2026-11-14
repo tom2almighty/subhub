@@ -1,4 +1,5 @@
-import { sourceCreateSchema, sourceUpdateSchema } from '@subhub/shared';
+import { inspectNodes } from '@subhub/proxy-core';
+import { parseInspectSchema, sourceCreateSchema, sourceUpdateSchema } from '@subhub/shared';
 import type { FastifyInstance } from 'fastify';
 import { badRequest } from '../errors.js';
 import {
@@ -7,6 +8,7 @@ import {
   getSource,
   getSourceNodes,
   listSources,
+  refreshAllSources,
   refreshSource,
   updateSource,
 } from '../services/source-service.js';
@@ -18,6 +20,11 @@ function parseId(value: string): number {
 }
 
 export default function registerSourceRoutes(app: FastifyInstance): void {
+  app.post('/api/parse/inspect', async (request) => {
+    const { content } = parseInspectSchema.parse(request.body ?? {});
+    return inspectNodes(content);
+  });
+
   app.get('/api/sources', async () => listSources());
 
   app.post('/api/sources', async (request, reply) => {
@@ -42,6 +49,8 @@ export default function registerSourceRoutes(app: FastifyInstance): void {
     deleteSource(parseId(id));
     return { ok: true };
   });
+
+  app.post('/api/sources/refresh-all', async () => refreshAllSources());
 
   app.post('/api/sources/:id/refresh', async (request) => {
     const { id } = request.params as { id: string };

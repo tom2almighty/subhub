@@ -3,9 +3,10 @@ import {
   type ShareTargetKind,
   SOURCE_DEFAULT_TARGET,
   type shareCreateSchema,
+  type shareUpdateSchema,
   type Target,
 } from '@subhub/shared';
-import { asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { randomToken } from '../auth/password.js';
 import { db } from '../db/index.js';
@@ -14,6 +15,7 @@ import { notFound } from '../errors.js';
 import { getSubscriptionPaths } from './settings-service.js';
 
 export type ShareCreateInput = z.infer<typeof shareCreateSchema>;
+export type ShareUpdateInput = z.infer<typeof shareUpdateSchema>;
 
 interface TargetInfo {
   name: string;
@@ -45,9 +47,12 @@ export function serializeShare(row: ShareRow, info: TargetInfo): ShareDto {
     token: row.token,
     url: `/${getSubscriptionPaths().sharePath}/${row.token}`,
     note: row.note,
+    enabled: row.enabled,
+    allowedTargets: row.allowedTargets ?? [],
     expiresAt: row.expiresAt,
     maxUses: row.maxUses,
     usedCount: row.usedCount,
+    lastUsedAt: row.lastUsedAt ?? null,
     createdAt: row.createdAt,
   };
 }
@@ -99,9 +104,12 @@ export function createShare(input: ShareCreateInput): ShareDto {
       targetId: input.targetId,
       token: randomToken(24),
       note: input.note ?? '',
+      enabled: input.enabled ?? true,
+      allowedTargets: input.allowedTargets ?? [],
       expiresAt,
       maxUses: input.maxUses ?? 0,
       usedCount: 0,
+      lastUsedAt: null,
       createdAt: now(),
     })
     .returning()
@@ -109,11 +117,24 @@ export function createShare(input: ShareCreateInput): ShareDto {
   return serializeShare(row, info);
 }
 
-export function updateShareNote(id: number, note: string): ShareDto {
+export function updateShare(id: number, input: ShareUpdateInput): ShareDto {
   const row = db.select().from(shares).where(eq(shares.id, id)).get();
   if (!row) throw notFound(`Share ${id} does not exist`, 'SHARE_NOT_FOUND');
-  db.update(shares).set({ note }).where(eq(shares.id, id)).run();
-  return serializeShare({ ...row, note }, targetInfo(row.kind, row.targetId));
+  const patch: Partial<ShareRow> = {};
+  if (input.note !== undefined) patch.note = input.note;
+  if (input.enabled !== undefined) patch.enabled = input.enabled;
+  if (input.allowedTargets !== undefined) patch.allowedTargets = input.allowedTargets;
+  if (Object.keys(patch).length > 0) {
+    db.update(shares).set(patch).where(eq(shares.id, id)).run();
+  }
+  const updated = { ...row, ...patch };
+  return serializeShare(updated, targetInfo(row.kind, row.targetId));
+}
+
+export function deleteSharesByTarget(kind: ShareTargetKind, targetId: number): void {
+  db.delete(shares)
+    .where(and(eq(shares.kind, kind), eq(shares.targetId, targetId)))
+    .run();
 }
 
 export function deleteShare(id: number): void {
@@ -125,6 +146,9 @@ export function deleteShare(id: number): void {
 export function findShare(token: string): ShareRow {
   const row = db.select().from(shares).where(eq(shares.token, token)).get();
   if (!row) throw notFound('Share link does not exist', 'SHARE_NOT_FOUND');
+  if (!row.enabled) {
+    throw notFound('Share link is disabled', 'SHARE_DISABLED');
+  }
   if (row.expiresAt && new Date(row.expiresAt).getTime() <= Date.now()) {
     throw notFound('Share link has expired', 'SHARE_EXPIRED');
   }
@@ -136,9 +160,10 @@ export function findShare(token: string): ShareRow {
 
 export function consumeShare(token: string): ShareRow {
   const row = findShare(token);
+  const timestamp = now();
   const result = db
     .update(shares)
-    .set({ usedCount: sql`${shares.usedCount} + 1` })
+    .set({ usedCount: sql`${shares.usedCount} + 1`, lastUsedAt: timestamp })
     .where(
       sql`${shares.id} = ${row.id} AND (${shares.maxUses} = 0 OR ${shares.usedCount} < ${shares.maxUses})`,
     )

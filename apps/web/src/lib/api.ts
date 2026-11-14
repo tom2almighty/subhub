@@ -1,4 +1,13 @@
-import type { OutputDto, PreviewDto, ShareDto, SourceDto, SubscriptionPaths } from '@subhub/shared';
+import type {
+  OutputDto,
+  ParseInspectDto,
+  PreviewDto,
+  RefreshAllResult,
+  ShareDto,
+  SourceDto,
+  SubscriptionPaths,
+  Target,
+} from '@subhub/shared';
 
 export class ApiError extends Error {
   status: number;
@@ -70,10 +79,17 @@ export const api = {
   deleteSource: (id: number) => request<{ ok: true }>(`/api/sources/${id}`, { method: 'DELETE' }),
   refreshSource: (id: number) =>
     request<SourceDto>(`/api/sources/${id}/refresh`, { method: 'POST' }),
+  refreshAllSources: () =>
+    request<RefreshAllResult>('/api/sources/refresh-all', { method: 'POST' }),
   getSourceNodes: (id: number) =>
     request<{ nodes: import('@subhub/shared').ProxyNode[]; warnings: string[] }>(
       `/api/sources/${id}/nodes`,
     ),
+  inspectParse: (content: string) =>
+    request<ParseInspectDto>('/api/parse/inspect', {
+      method: 'POST',
+      body: json({ content }),
+    }),
 
   listOutputs: () => request<OutputDto[]>('/api/outputs'),
   getOutput: (id: number) => request<OutputDto>(`/api/outputs/${id}`),
@@ -86,6 +102,8 @@ export const api = {
     request<PreviewDto>(
       `/api/outputs/${id}/preview${target ? `?target=${encodeURIComponent(target)}` : ''}`,
     ),
+  dryRunOutput: (body: unknown) =>
+    request<PreviewDto>('/api/outputs/dry-run', { method: 'POST', body: json(body) }),
 
   listShares: () => request<ShareDto[]>('/api/shares'),
   createShare: (body: unknown) =>
@@ -93,8 +111,10 @@ export const api = {
       method: 'POST',
       body: json(body),
     }),
-  updateShare: (id: number, note: string) =>
-    request<ShareDto>(`/api/shares/${id}`, { method: 'PATCH', body: json({ note }) }),
+  updateShare: (
+    id: number,
+    body: { note?: string; enabled?: boolean; allowedTargets?: Target[] },
+  ) => request<ShareDto>(`/api/shares/${id}`, { method: 'PATCH', body: json(body) }),
   deleteShare: (id: number) => request<{ ok: true }>(`/api/shares/${id}`, { method: 'DELETE' }),
 
   getSettings: () => request<SubscriptionPaths>('/api/settings'),

@@ -1,4 +1,12 @@
-import type { OutputDto, ShareDto, ShareTargetKind, SourceDto } from '@subhub/shared';
+import {
+  type OutputDto,
+  type ShareDto,
+  type ShareTargetKind,
+  type SourceDto,
+  TARGET_LABELS,
+  TARGETS,
+  type Target,
+} from '@subhub/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link2, Loader2, Pencil, Plus, Share2, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -27,8 +35,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
 import { api } from '@/lib/api';
 import { formatDate } from '@/lib/format';
+import { cn } from '@/lib/utils';
 
 interface ShareBody {
   kind: ShareTargetKind;
@@ -36,6 +46,7 @@ interface ShareBody {
   note: string;
   expiresInDays: number;
   maxUses: number;
+  allowedTargets?: Target[];
 }
 
 export function SharesPage() {
@@ -60,8 +71,14 @@ export function SharesPage() {
     onError: (error: Error) => toast.error(error.message),
   });
 
-  const updateNote = useMutation({
-    mutationFn: ({ id, note }: { id: number; note: string }) => api.updateShare(id, note),
+  const updateShare = useMutation({
+    mutationFn: ({
+      id,
+      body,
+    }: {
+      id: number;
+      body: { note?: string; enabled?: boolean; allowedTargets?: Target[] };
+    }) => api.updateShare(id, body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['shares'] });
       setEditing(undefined);
@@ -102,7 +119,7 @@ export function SharesPage() {
       ) : shares.data?.length ? (
         <div className="space-y-3">
           {shares.data.map((share) => (
-            <Card key={share.id}>
+            <Card key={share.id} className={cn(!share.enabled && 'opacity-70')}>
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
                 <CardTitle className="flex min-w-0 items-center gap-2 text-base">
                   <span className="truncate">{share.targetName}</span>
@@ -110,7 +127,14 @@ export function SharesPage() {
                     {t(`shares.${share.kind}`)}
                   </Badge>
                 </CardTitle>
-                <div className="flex shrink-0 items-center gap-0.5">
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <Switch
+                    checked={share.enabled}
+                    onCheckedChange={(enabled) =>
+                      updateShare.mutate({ id: share.id, body: { enabled } })
+                    }
+                    aria-label={t('common.enable')}
+                  />
                   <Button
                     variant="ghost"
                     size="icon-sm"
@@ -153,6 +177,19 @@ export function SharesPage() {
                   )}
                 </div>
 
+                {share.allowedTargets.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-1">
+                    <span className="text-xs text-muted-foreground mr-1">
+                      {t('shares.allowedTargets')}:
+                    </span>
+                    {share.allowedTargets.map((target) => (
+                      <Badge key={target} variant="outline" className="text-[10px]">
+                        {TARGET_LABELS[target]}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                   <span>
                     {t('outputs.maxUses')}: {share.maxUses || t('common.unlimited')}
@@ -164,6 +201,11 @@ export function SharesPage() {
                     {t('sources.expire')}:{' '}
                     {share.expiresAt ? formatDate(share.expiresAt) : t('common.never')}
                   </span>
+                  {share.lastUsedAt ? (
+                    <span>
+                      {t('shares.lastUsedAt')}: {formatDate(share.lastUsedAt)}
+                    </span>
+                  ) : null}
                 </div>
               </CardContent>
             </Card>
@@ -185,12 +227,12 @@ export function SharesPage() {
         onCreate={(body) => createShare.mutate(body)}
       />
 
-      <EditNoteDialog
+      <EditShareDialog
         share={editing}
         onClose={() => setEditing(undefined)}
-        pending={updateNote.isPending}
-        onSave={(note) => {
-          if (editing) updateNote.mutate({ id: editing.id, note });
+        pending={updateShare.isPending}
+        onSave={(body) => {
+          if (editing) updateShare.mutate({ id: editing.id, body });
         }}
       />
 
@@ -227,6 +269,7 @@ function CreateShareDialog({
   const [note, setNote] = useState('');
   const [expiresInDays, setExpiresInDays] = useState('0');
   const [maxUses, setMaxUses] = useState('0');
+  const [allowedTargets, setAllowedTargets] = useState<Target[]>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -235,10 +278,17 @@ function CreateShareDialog({
     setNote('');
     setExpiresInDays('0');
     setMaxUses('0');
+    setAllowedTargets([]);
   }, [open]);
 
   const targets = kind === 'source' ? sources : outputs;
   const valid = Number.isInteger(Number(targetId)) && Number(targetId) > 0;
+
+  function toggleTarget(target: Target) {
+    setAllowedTargets((prev) =>
+      prev.includes(target) ? prev.filter((item) => item !== target) : [...prev, target],
+    );
+  }
 
   function handleSubmit() {
     if (!valid) return;
@@ -248,6 +298,7 @@ function CreateShareDialog({
       note: note.trim(),
       expiresInDays: Number.parseInt(expiresInDays, 10) || 0,
       maxUses: Number.parseInt(maxUses, 10) || 0,
+      allowedTargets,
     });
   }
 
@@ -325,6 +376,24 @@ function CreateShareDialog({
               />
             </div>
           </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">{t('shares.allowedTargets')}</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {TARGETS.map((target) => (
+                <Button
+                  key={target}
+                  type="button"
+                  size="sm"
+                  variant={allowedTargets.includes(target) ? 'default' : 'outline'}
+                  className="h-7 px-2.5 text-xs"
+                  onClick={() => toggleTarget(target)}
+                >
+                  {TARGET_LABELS[target]}
+                </Button>
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground">{t('shares.allowedTargetsHint')}</p>
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -344,7 +413,7 @@ function CreateShareDialog({
   );
 }
 
-function EditNoteDialog({
+function EditShareDialog({
   share,
   onClose,
   onSave,
@@ -352,15 +421,23 @@ function EditNoteDialog({
 }: {
   share?: ShareDto;
   onClose: () => void;
-  onSave: (note: string) => void;
+  onSave: (body: { note: string; allowedTargets: Target[] }) => void;
   pending: boolean;
 }) {
   const { t } = useTranslation();
   const [note, setNote] = useState(share?.note ?? '');
+  const [allowedTargets, setAllowedTargets] = useState<Target[]>(share?.allowedTargets ?? []);
 
   useEffect(() => {
     setNote(share?.note ?? '');
+    setAllowedTargets(share?.allowedTargets ?? []);
   }, [share]);
+
+  function toggleTarget(target: Target) {
+    setAllowedTargets((prev) =>
+      prev.includes(target) ? prev.filter((item) => item !== target) : [...prev, target],
+    );
+  }
 
   return (
     <Dialog open={!!share} onOpenChange={(open) => !open && onClose()}>
@@ -368,19 +445,43 @@ function EditNoteDialog({
         <DialogHeader>
           <DialogTitle>{t('outputs.editNote')}</DialogTitle>
         </DialogHeader>
-        <div className="py-2">
-          <Input
-            value={note}
-            maxLength={200}
-            placeholder={t('shares.notePlaceholder')}
-            onChange={(event) => setNote(event.target.value)}
-          />
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">{t('shares.note')}</Label>
+            <Input
+              value={note}
+              maxLength={200}
+              placeholder={t('shares.notePlaceholder')}
+              onChange={(event) => setNote(event.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">{t('shares.allowedTargets')}</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {TARGETS.map((target) => (
+                <Button
+                  key={target}
+                  type="button"
+                  size="sm"
+                  variant={allowedTargets.includes(target) ? 'default' : 'outline'}
+                  className="h-7 px-2.5 text-xs"
+                  onClick={() => toggleTarget(target)}
+                >
+                  {TARGET_LABELS[target]}
+                </Button>
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground">{t('shares.allowedTargetsHint')}</p>
+          </div>
         </div>
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button disabled={pending} onClick={() => onSave(note.trim())}>
+          <Button
+            disabled={pending}
+            onClick={() => onSave({ note: note.trim(), allowedTargets })}
+          >
             {t('common.save')}
           </Button>
         </DialogFooter>

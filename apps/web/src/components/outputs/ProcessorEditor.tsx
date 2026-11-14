@@ -15,9 +15,24 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { PROXY_TYPES, type Processor, type ProxyType } from '@subhub/shared';
+import {
+  PROXY_TYPES,
+  type Processor,
+  type ProcessorTraceStep,
+  type ProxyType,
+} from '@subhub/shared';
 import type { TFunction } from 'i18next';
-import { ChevronDown, GripVertical, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronDown,
+  Copy,
+  GripVertical,
+  MoreHorizontal,
+  Plus,
+  Sparkles,
+  Trash2,
+} from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
@@ -50,7 +65,7 @@ const PROCESSOR_GROUPS = [
   },
   {
     label: 'processors.groupTransform',
-    types: ['rename', 'prefix-suffix', 'flag', 'dns', 'sort', 'sort-regex', 'set'],
+    types: ['rename', 'prefix-suffix', 'source-tag', 'flag', 'dns', 'sort', 'sort-regex', 'set'],
   },
   {
     label: 'processors.groupScript',
@@ -81,6 +96,8 @@ function defaultProcessor(type: Processor['type']): Processor {
       return { id, type, args: { field: 'name', pattern: '', replacement: '', flags: 'gi' } };
     case 'prefix-suffix':
       return { id, type, args: { prefix: '', suffix: '' } };
+    case 'source-tag':
+      return { id, type, args: { position: 'prefix', format: '[{{source}}] ' } };
     case 'sort':
       return { id, type, args: { by: 'name', order: 'asc' } };
     case 'sort-regex':
@@ -299,6 +316,46 @@ function ArgsEditor({
           </Field>
         </div>
       );
+    case 'source-tag': {
+      const position = args.position ?? 'prefix';
+      const format = args.format ?? '[{{source}}] ';
+      return (
+        <div className="space-y-2.5">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={t('processors.sourceTagPosition')}>
+              <Select
+                value={position}
+                onValueChange={(value) => {
+                  const nextPos = value as 'prefix' | 'suffix';
+                  const nextFormat =
+                    nextPos === 'suffix' && format === '[{{source}}] '
+                      ? ' - {{source}}'
+                      : nextPos === 'prefix' && format === ' - {{source}}'
+                        ? '[{{source}}] '
+                        : format;
+                  patch({ position: nextPos, format: nextFormat });
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="prefix">{t('processors.flagPrefix')}</SelectItem>
+                  <SelectItem value="suffix">{t('processors.flagSuffix')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label={t('processors.sourceTagFormat')}>
+              <Input
+                value={format}
+                onChange={(event) => patch({ format: event.target.value })}
+              />
+            </Field>
+          </div>
+          <p className="text-[11px] text-muted-foreground">{t('processors.sourceTagHint')}</p>
+        </div>
+      );
+    }
     case 'sort':
       return (
         <div className="grid gap-3 sm:grid-cols-2">
@@ -525,6 +582,8 @@ function processorSummary(processor: Processor, t: TFunction): string {
         : '';
     case 'prefix-suffix':
       return `${processor.args.prefix}…${processor.args.suffix}`;
+    case 'source-tag':
+      return `${t(`processors.${processor.args.position === 'suffix' ? 'flagSuffix' : 'flagPrefix'}`)} · ${processor.args.format}`;
     case 'sort':
     case 'sort-regex':
       return processor.type === 'sort'
@@ -552,18 +611,81 @@ function processorSummary(processor: Processor, t: TFunction): string {
   }
 }
 
+const PROCESSOR_PRESETS: {
+  key: string;
+  create: () => Processor[];
+}[] = [
+  {
+    key: 'cleanAndFlag',
+    create: () => [
+      { id: newId(), type: 'useless-filter', args: {} },
+      { id: newId(), type: 'dedupe', args: { by: 'fingerprint' } },
+      { id: newId(), type: 'flag', args: { position: 'prefix', twAsCn: true } },
+    ],
+  },
+  {
+    key: 'dropUseless',
+    create: () => [{ id: newId(), type: 'useless-filter', args: {} }],
+  },
+  {
+    key: 'dedupe',
+    create: () => [{ id: newId(), type: 'dedupe', args: { by: 'fingerprint' } }],
+  },
+  {
+    key: 'mainstreamProtocols',
+    create: () => [
+      {
+        id: newId(),
+        type: 'type-filter',
+        args: { types: ['vless', 'trojan', 'ss', 'hysteria2'], mode: 'include' },
+      },
+    ],
+  },
+  {
+    key: 'sortByRegion',
+    create: () => [
+      {
+        id: newId(),
+        type: 'sort-regex',
+        args: {
+          patterns: [
+            '香港|HK|Hong',
+            '台湾|TW|Taiwan',
+            '日本|JP|Japan',
+            '新加坡|SG|Singapore',
+            '美国|US|United States',
+          ],
+        },
+      },
+    ],
+  },
+];
+
 export function ProcessorEditor({
   value,
   onChange,
+  trace,
 }: {
   value: Processor[];
   onChange: (processors: Processor[]) => void;
+  trace?: ProcessorTraceStep[];
 }) {
   const { t } = useTranslation();
   const [openId, setOpenId] = useState<string | null>(null);
+  const traceMap = new Map(trace?.map((step) => [step.id, step]));
 
   function update(index: number, processor: Processor) {
     onChange(value.map((item, i) => (i === index ? processor : item)));
+  }
+
+  function duplicate(index: number) {
+    const source = value[index];
+    if (!source) return;
+    const copy = { ...structuredClone(source), id: newId() };
+    const next = [...value];
+    next.splice(index + 1, 0, copy);
+    onChange(next);
+    setOpenId(copy.id);
   }
 
   const sensors = useSensors(
@@ -586,6 +708,12 @@ export function ProcessorEditor({
     setOpenId(processor.id);
   }
 
+  function applyPreset(create: () => Processor[]) {
+    const items = create();
+    onChange([...value, ...items]);
+    if (items.length === 1 && items[0]) setOpenId(items[0].id);
+  }
+
   return (
     <div className="space-y-2">
       {value.length === 0 ? (
@@ -604,42 +732,75 @@ export function ProcessorEditor({
               key={processor.id}
               processor={processor}
               index={index}
+              total={value.length}
+              step={traceMap.get(processor.id)}
               open={openId === processor.id}
               onToggle={() => setOpenId(openId === processor.id ? null : processor.id)}
               onChange={(next) => update(index, next)}
+              onMoveUp={() => index > 0 && onChange(arrayMove(value, index, index - 1))}
+              onMoveDown={() =>
+                index < value.length - 1 && onChange(arrayMove(value, index, index + 1))
+              }
+              onDuplicate={() => duplicate(index)}
               onRemove={() => onChange(value.filter((_, i) => i !== index))}
             />
           ))}
         </SortableContext>
       </DndContext>
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full border-dashed text-muted-foreground hover:text-foreground"
-          >
-            <Plus className="size-4" />
-            {t('processors.addProcessor')}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto">
-          {PROCESSOR_GROUPS.map((group, groupIndex) => (
-            <div key={group.label}>
-              {groupIndex > 0 ? <DropdownMenuSeparator /> : null}
-              <DropdownMenuLabel className="text-xs text-muted-foreground">
-                {t(group.label)}
-              </DropdownMenuLabel>
-              {group.types.map((type) => (
-                <DropdownMenuItem key={type} onClick={() => add(type)}>
-                  {t(`processors.${type}`)}
-                </DropdownMenuItem>
-              ))}
-            </div>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1 border-dashed text-muted-foreground hover:text-foreground"
+            >
+              <Plus className="size-4" />
+              {t('processors.addProcessor')}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto">
+            {PROCESSOR_GROUPS.map((group, groupIndex) => (
+              <div key={group.label}>
+                {groupIndex > 0 ? <DropdownMenuSeparator /> : null}
+                <DropdownMenuLabel className="text-xs text-muted-foreground">
+                  {t(group.label)}
+                </DropdownMenuLabel>
+                {group.types.map((type) => (
+                  <DropdownMenuItem key={type} onClick={() => add(type)}>
+                    {t(`processors.${type}`)}
+                  </DropdownMenuItem>
+                ))}
+              </div>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              className="border-dashed text-muted-foreground hover:text-foreground sm:w-auto"
+            >
+              <Sparkles className="size-4 text-primary" />
+              {t('processors.presets')}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-60">
+            <DropdownMenuLabel className="text-xs text-muted-foreground">
+              {t('processors.presetsHint')}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {PROCESSOR_PRESETS.map((preset) => (
+              <DropdownMenuItem key={preset.key} onClick={() => applyPreset(preset.create)}>
+                {t(`processors.preset_${preset.key}`)}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </div>
   );
 }
@@ -647,16 +808,26 @@ export function ProcessorEditor({
 function SortableProcessor({
   processor,
   index,
+  total,
+  step,
   open,
   onToggle,
   onChange,
+  onMoveUp,
+  onMoveDown,
+  onDuplicate,
   onRemove,
 }: {
   processor: Processor;
   index: number;
+  total: number;
+  step?: ProcessorTraceStep;
   open: boolean;
   onToggle: () => void;
   onChange: (processor: Processor) => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onDuplicate: () => void;
   onRemove: () => void;
 }) {
   const { t } = useTranslation();
@@ -702,8 +873,24 @@ function SortableProcessor({
           className="flex min-w-0 flex-1 items-center gap-2 rounded-md py-1 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium">
-              {t(`processors.${processor.type}`)}
+            <span className="flex items-center gap-2">
+              <span className="truncate text-sm font-medium">
+                {t(`processors.${processor.type}`)}
+              </span>
+              {step && !step.disabled ? (
+                <span
+                  className={cn(
+                    'shrink-0 rounded-full px-1.5 py-0.2 font-mono text-[10px] tabular-nums',
+                    step.afterCount < step.beforeCount
+                      ? 'bg-warning/15 text-warning'
+                      : step.afterCount > step.beforeCount
+                        ? 'bg-success/15 text-success'
+                        : 'bg-muted text-muted-foreground',
+                  )}
+                >
+                  {step.beforeCount} → {step.afterCount}
+                </span>
+              ) : null}
             </span>
             <span
               className={cn(
@@ -733,6 +920,20 @@ function SortableProcessor({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem disabled={index === 0} onClick={onMoveUp}>
+              <ArrowUp className="size-4" />
+              {t('common.moveUp')}
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled={index >= total - 1} onClick={onMoveDown}>
+              <ArrowDown className="size-4" />
+              {t('common.moveDown')}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onDuplicate}>
+              <Copy className="size-4" />
+              {t('common.duplicate')}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem className="text-destructive" onClick={onRemove}>
               <Trash2 className="size-4" />
               {t('common.delete')}

@@ -1,4 +1,4 @@
-import type { ProxyNode } from '@subhub/shared';
+import type { ParseInspectDto, ProxyNode } from '@subhub/shared';
 import { parse as parseYaml } from 'yaml';
 import { normalizeNodeText } from '../text.js';
 import { maybeBase64Decode } from '../util.js';
@@ -116,4 +116,56 @@ export function parseNodes(input: string, depth = 0): ParseResult {
     if (structured.warnings.length > 0 && lines.nodes.length === 0) return structured;
   }
   return lines;
+}
+
+export function inspectNodes(input: string): ParseInspectDto {
+  const text = input.replace(/^﻿/, '').replace(/\r\n?/g, '\n').trim();
+  if (!text) return { format: 'empty', nodes: [], warnings: [] };
+
+  const decoded = maybeBase64Decode(text);
+  if (decoded) {
+    const inner = inspectNodes(decoded);
+    if (inner.nodes.length > 0) {
+      return {
+        format: `base64 (${inner.format})`,
+        nodes: inner.nodes,
+        warnings: inner.warnings,
+      };
+    }
+  }
+
+  const trimmed = text.trim();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      const result = parseStructuredText(text);
+      if (result) {
+        const format = Array.isArray(parsed)
+          ? 'json-array'
+          : isPlainObject(parsed) && Array.isArray(parsed.outbounds)
+            ? 'singbox-json'
+            : 'mihomo-json';
+        return { format, nodes: result.nodes, warnings: result.warnings };
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  const structured = parseStructuredText(text);
+  if (structured && structured.nodes.length > 0) {
+    return { format: 'mihomo-yaml', nodes: structured.nodes, warnings: structured.warnings };
+  }
+
+  const lines = parseLineFormat(text);
+  if (lines.nodes.length > 0) {
+    const hasUri = text.split('\n').some((line) => URI_PATTERN.test(line.trim()));
+    return {
+      format: hasUri ? 'uri-list' : 'proxy-line',
+      nodes: lines.nodes,
+      warnings: lines.warnings,
+    };
+  }
+
+  return { format: 'unknown', nodes: lines.nodes, warnings: lines.warnings };
 }

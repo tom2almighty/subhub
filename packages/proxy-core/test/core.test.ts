@@ -280,6 +280,14 @@ describe('produce', () => {
     expect(json.outbounds.map((item) => item.type)).toEqual(['hysteria2', 'shadowsocks', 'direct']);
   });
 
+  it('produces Egern YAML proxies', () => {
+    const { content, warnings } = produce(parseMihomoYaml(MIHOMO_YAML).nodes, 'egern');
+    expect(warnings).toEqual([]);
+    expect(content).toContain('proxies:');
+    expect(content).toContain('hysteria2:');
+    expect(content).toContain('shadowsocks:');
+  });
+
   it('reports per-node failures without dropping the output', () => {
     const unsupported: ProxyNode = {
       name: 'WG',

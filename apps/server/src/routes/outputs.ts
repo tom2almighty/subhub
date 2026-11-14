@@ -1,9 +1,15 @@
-import { outputCreateSchema, outputUpdateSchema, targetSchema } from '@subhub/shared';
+import {
+  outputCreateSchema,
+  outputDryRunSchema,
+  outputUpdateSchema,
+  targetSchema,
+} from '@subhub/shared';
 import type { FastifyInstance } from 'fastify';
 import { badRequest } from '../errors.js';
 import {
   createOutput,
   deleteOutput,
+  dryRunOutput,
   getOutput,
   listOutputs,
   previewOutput,
@@ -40,6 +46,11 @@ export default function registerOutputRoutes(app: FastifyInstance): void {
     const { id } = request.params as { id: string };
     deleteOutput(parseId(id));
     return { ok: true };
+  });
+
+  app.post('/api/outputs/dry-run', async (request) => {
+    const input = outputDryRunSchema.parse(request.body ?? {});
+    return dryRunOutput(input);
   });
 
   app.get('/api/outputs/:id/preview', async (request) => {

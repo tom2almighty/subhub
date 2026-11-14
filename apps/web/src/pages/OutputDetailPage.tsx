@@ -1,31 +1,60 @@
-import { type Processor, TARGET_LABELS, TARGETS, type Target } from '@subhub/shared';
+import {
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import {
+  type Processor,
+  type ProxyType,
+  type SourceDto,
+  TARGET_LABELS,
+  TARGETS,
+  type Target,
+} from '@subhub/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  AlertTriangle,
   ArrowDown,
   ArrowLeft,
   ArrowUp,
   Eye,
+  GripVertical,
   Link2,
   Loader2,
   Pencil,
   Plus,
   RotateCcw,
   Save,
+  Search,
   Trash2,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { CopyButton } from '@/components/common/CopyButton';
 import { PageHeader } from '@/components/common/PageHeader';
-import { NodeList } from '@/components/nodes/NodeList';
+import { NodeList, ProtocolFilterBar } from '@/components/nodes/NodeList';
 import { CopySubscription } from '@/components/outputs/CopySubscription';
 import { OutputFormDialog } from '@/components/outputs/OutputFormDialog';
 import { ProcessorEditor } from '@/components/outputs/ProcessorEditor';
+import { TargetSharePanel } from '@/components/shares/TargetSharePanel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -36,6 +65,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api } from '@/lib/api';
+import { cn } from '@/lib/utils';
 
 export function OutputDetailPage() {
   const { t } = useTranslation();
@@ -47,6 +77,14 @@ export function OutputDetailPage() {
   const [sourceIds, setSourceIds] = useState<number[]>([]);
   const [dirty, setDirty] = useState(false);
   const [previewTarget, setPreviewTarget] = useState<Target | undefined>();
+  const [nodeSearch, setNodeSearch] = useState('');
+  const [protocolFilter, setProtocolFilter] = useState<ProxyType | 'all'>('all');
+  const [hydrated, setHydrated] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   const output = useQuery({
     queryKey: ['output', outputId],
@@ -60,24 +98,70 @@ export function OutputDetailPage() {
     setProcessors(output.data.processors);
     setSourceIds(output.data.sourceIds);
     setDirty(false);
+    setHydrated(true);
   }, [output.data]);
 
+  const preview = useMutation({
+    mutationFn: (payload: { target: Target; sourceIds: number[]; processors: Processor[] }) =>
+      api.dryRunOutput(payload),
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const activePreviewTarget = previewTarget ?? output.data?.target ?? 'mihomo';
+
+  const draftKey = useMemo(
+    () =>
+      JSON.stringify({
+        target: activePreviewTarget,
+        sourceIds,
+        processors,
+      }),
+    [activePreviewTarget, sourceIds, processors],
+  );
+
+  const previewMutateRef = useRef(preview.mutate);
+  previewMutateRef.current = preview.mutate;
+
+  useEffect(() => {
+    if (!hydrated || !output.data) return;
+    const timer = window.setTimeout(() => {
+      previewMutateRef.current({
+        target: activePreviewTarget,
+        sourceIds,
+        processors,
+      });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [hydrated, output.data, draftKey, activePreviewTarget, sourceIds, processors]);
+
   const save = useMutation({
-    mutationFn: () => api.updateOutput(outputId, { processors, sourceIds }),
+    mutationFn: () =>
+      api.updateOutput(outputId, {
+        processors,
+        sourceIds,
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['output', outputId] });
       void queryClient.invalidateQueries({ queryKey: ['outputs'] });
       setDirty(false);
-      preview.mutate(previewTarget);
       toast.success(t('common.save'));
     },
     onError: (error: Error) => toast.error(error.message),
   });
 
-  const preview = useMutation({
-    mutationFn: (target?: Target) => api.previewOutput(outputId, target),
-    onError: (error: Error) => toast.error(error.message),
-  });
+  const filteredPreviewNodes = useMemo(() => {
+    const list = preview.data?.nodes ?? [];
+    const keyword = nodeSearch.trim().toLowerCase();
+    return list.filter((node) => {
+      if (protocolFilter !== 'all' && node.type !== protocolFilter) return false;
+      if (!keyword) return true;
+      return (
+        node.name.toLowerCase().includes(keyword) ||
+        node.server?.toLowerCase().includes(keyword) ||
+        node.type.toLowerCase().includes(keyword)
+      );
+    });
+  }, [preview.data, nodeSearch, protocolFilter]);
 
   if (output.isLoading) {
     return (
@@ -100,7 +184,6 @@ export function OutputDetailPage() {
   }
 
   const data = output.data;
-  const activePreviewTarget = previewTarget ?? data.target;
   const selectedSources = sourceIds
     .map((sourceId) => sources.data?.find((item) => item.id === sourceId))
     .filter((item): item is NonNullable<typeof item> => !!item);
@@ -116,12 +199,271 @@ export function OutputDetailPage() {
     setDirty(true);
   }
 
+  function handleSourceDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = sourceIds.indexOf(Number(active.id));
+    const newIndex = sourceIds.indexOf(Number(over.id));
+    if (oldIndex < 0 || newIndex < 0) return;
+    setSourceIds(arrayMove(sourceIds, oldIndex, newIndex));
+    setDirty(true);
+  }
+
   function handleReset() {
     if (!output.data) return;
     setProcessors(output.data.processors);
     setSourceIds(output.data.sourceIds);
     setDirty(false);
   }
+
+  function runManualPreview() {
+    preview.mutate({
+      target: activePreviewTarget,
+      sourceIds,
+      processors,
+    });
+  }
+
+  const sourcesPanel = (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold">{t('outputs.sources')}</h2>
+          <span className="text-xs text-muted-foreground">{t('outputs.sourceOrder')}</span>
+        </div>
+        <Card className="overflow-hidden p-0">
+          {selectedSources.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              {t('outputs.noSources')}
+            </p>
+          ) : (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleSourceDragEnd}
+            >
+              <SortableContext items={sourceIds} strategy={verticalListSortingStrategy}>
+                <div className="divide-y divide-border">
+                  {selectedSources.map((source, index) => (
+                    <SortableSourceRow
+                      key={source.id}
+                      source={source}
+                      index={index}
+                      total={selectedSources.length}
+                      onMove={moveSource}
+                      onRemove={() => {
+                        setSourceIds(sourceIds.filter((item) => item !== source.id));
+                        setDirty(true);
+                      }}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+          )}
+        </Card>
+      </div>
+
+      {availableSources.length > 0 ? (
+        <div className="space-y-2">
+          <h3 className="text-xs font-medium text-muted-foreground">{t('outputs.selectSources')}</h3>
+          <Card className="overflow-hidden p-0">
+            <div className="divide-y divide-border">
+              {availableSources.map((source) => (
+                <button
+                  key={source.id}
+                  type="button"
+                  onClick={() => {
+                    setSourceIds([...sourceIds, source.id]);
+                    setDirty(true);
+                  }}
+                  className="flex w-full items-center gap-2 p-3 text-left transition-colors hover:bg-muted/50 sm:px-4"
+                >
+                  <Plus className="size-3.5 shrink-0 text-primary" />
+                  <span className="min-w-0 flex-1 truncate text-sm">{source.name}</span>
+                  <Badge variant="secondary" className="text-[11px] font-normal">
+                    {source.kind === 'remote' ? t('sources.remote') : t('sources.manual')}
+                  </Badge>
+                  <Badge variant="outline" className="text-xs text-muted-foreground">
+                    {source.nodeCount}
+                  </Badge>
+                </button>
+              ))}
+            </div>
+          </Card>
+        </div>
+      ) : null}
+    </div>
+  );
+
+  const processorsPanel = (
+    <div className="space-y-3">
+      <div>
+        <h2 className="text-sm font-semibold">{t('outputs.processors')}</h2>
+        <p className="mt-0.5 text-xs text-muted-foreground">{t('outputs.processorsHint')}</p>
+      </div>
+      <ProcessorEditor
+        value={processors}
+        trace={preview.data?.trace}
+        onChange={(next) => {
+          setProcessors(next);
+          setDirty(true);
+        }}
+      />
+    </div>
+  );
+
+  const sharesPanel = <TargetSharePanel kind="output" targetId={outputId} />;
+
+  const previewPanel = (
+    <div className="flex flex-col gap-3">
+      <Card className="shrink-0">
+        <CardContent className="p-3 pt-3 sm:p-4 sm:pt-4 space-y-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
+              <Link2 className="size-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
+                {window.location.origin}
+                {data.url}
+              </span>
+            </div>
+            <CopySubscription
+              url={data.url}
+              defaultTarget={data.target}
+              showLabel
+              variant="default"
+              className="w-full sm:w-auto"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">{t('outputs.linkTargetHint')}</p>
+        </CardContent>
+      </Card>
+
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-lg border bg-card/60 p-2.5">
+        <p className="text-xs text-muted-foreground">{t('outputs.previewHint')}</p>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground hidden sm:inline">
+            {t('outputs.previewTarget')}:
+          </span>
+          <Select
+            value={activePreviewTarget}
+            onValueChange={(value) => {
+              setPreviewTarget(value as Target);
+            }}
+          >
+            <SelectTrigger className="h-8 w-36 text-xs" aria-label={t('outputs.previewTarget')}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TARGETS.map((target) => (
+                <SelectItem key={target} value={target}>
+                  {TARGET_LABELS[target]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {preview.data ? (
+        <>
+          {preview.data.dropped && preview.data.dropped.length > 0 ? (
+            <div className="shrink-0 rounded-lg border border-warning/30 bg-warning/10 p-3 text-warning">
+              <div className="flex items-center gap-1.5 text-xs font-semibold">
+                <AlertTriangle className="size-3.5" />
+                <span>
+                  {t('outputs.droppedNodes')} ({preview.data.dropped.length})
+                </span>
+              </div>
+              <ul className="mt-1.5 space-y-1 text-xs">
+                {preview.data.dropped.slice(0, 8).map((item, idx) => (
+                  <li key={`${item.name}-${idx}`}>
+                    • [{item.type}] {item.name}: {item.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {preview.data.warnings.length > 0 ? (
+            <div className="shrink-0 rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-destructive">
+              <div className="text-xs font-semibold">{t('outputs.warnings')}</div>
+              <ul className="mt-1 space-y-1 text-xs">
+                {preview.data.warnings.map((warning) => (
+                  <li key={warning}>• {warning}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          <Tabs defaultValue="nodes" className="flex flex-col">
+            <TabsList className="w-full shrink-0 grid grid-cols-2 sm:w-fit sm:inline-flex">
+              <TabsTrigger value="nodes" className="text-xs px-3">
+                {t('outputs.cardView')} ({filteredPreviewNodes.length})
+              </TabsTrigger>
+              <TabsTrigger value="content" className="text-xs px-3">
+                {t('outputs.textView')} ({preview.data.count})
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="nodes" className="mt-3 outline-none">
+              <Card className="overflow-hidden p-3 sm:p-4">
+                <div className="space-y-3">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-2.5 top-2 size-3.5 text-muted-foreground" />
+                    <Input
+                      value={nodeSearch}
+                      onChange={(e) => setNodeSearch(e.target.value)}
+                      placeholder={t('outputs.searchNodes')}
+                      className="h-8 pl-8 text-xs"
+                    />
+                  </div>
+                  <ProtocolFilterBar
+                    nodes={preview.data.nodes}
+                    selected={protocolFilter}
+                    onSelect={setProtocolFilter}
+                    allLabel={t('common.all')}
+                  />
+                  <NodeList
+                    nodes={filteredPreviewNodes}
+                    columns={2}
+                    className="max-h-[420px] overflow-y-auto pr-0.5"
+                  />
+                </div>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="content" className="mt-3 outline-none">
+              <Card className="relative overflow-hidden p-3 sm:p-4">
+                <div className="absolute right-5 top-5 z-10 sm:right-6 sm:top-6">
+                  <CopyButton value={preview.data.content} size="sm" variant="outline" />
+                </div>
+                <pre className="max-h-[480px] min-h-56 overflow-auto rounded-md bg-muted/40 p-3 pr-14 font-mono text-xs leading-relaxed">
+                  {preview.data.content}
+                </pre>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </>
+      ) : (
+        <Card className="flex min-h-[220px] flex-1 items-center justify-center p-6 text-center">
+          <div className="space-y-2">
+            <Eye className="mx-auto size-8 text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground">{t('outputs.previewEmpty')}</p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={runManualPreview}
+              disabled={preview.isPending}
+            >
+              {preview.isPending ? <Loader2 className="size-3.5 animate-spin mr-1" /> : null}
+              {t('outputs.preview')}
+            </Button>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col pb-12">
@@ -147,7 +489,7 @@ export function OutputDetailPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => preview.mutate(activePreviewTarget)}
+              onClick={runManualPreview}
               disabled={preview.isPending}
             >
               {preview.isPending ? (
@@ -165,221 +507,78 @@ export function OutputDetailPage() {
         }
       />
 
-      <Tabs defaultValue="preview" className="min-h-0 flex-1 flex flex-col">
-        <TabsList className="w-full shrink-0 grid grid-cols-3 sm:w-fit sm:inline-flex">
-          <TabsTrigger value="preview" className="text-xs sm:text-sm px-2 sm:px-4">
+      {/* Mobile / Tablet tabbed layout */}
+      <Tabs defaultValue="preview" className="min-h-0 flex-1 flex flex-col lg:hidden">
+        <TabsList className="w-full shrink-0 grid grid-cols-4">
+          <TabsTrigger value="preview" className="text-xs px-1">
             {t('outputs.preview')}
           </TabsTrigger>
-          <TabsTrigger value="processors" className="text-xs sm:text-sm px-2 sm:px-4">
+          <TabsTrigger value="sources" className="text-xs px-1">
+            {t('outputs.sources')}
+          </TabsTrigger>
+          <TabsTrigger value="processors" className="text-xs px-1">
             {t('outputs.processors')}
           </TabsTrigger>
-          <TabsTrigger value="sources" className="text-xs sm:text-sm px-2 sm:px-4">
-            {t('outputs.sources')}
+          <TabsTrigger value="shares" className="text-xs px-1">
+            {t('nav.shares')}
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent
-          value="preview"
-          className="mt-4 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto outline-none"
-        >
-          <Card className="shrink-0">
-            <CardContent className="p-3 sm:p-4 space-y-2">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
-                  <Link2 className="size-4 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
-                    {window.location.origin}
-                    {data.url}
-                  </span>
-                </div>
-                <CopySubscription
-                  url={data.url}
-                  defaultTarget={data.target}
-                  showLabel
-                  variant="default"
-                  className="w-full sm:w-auto"
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">{t('outputs.linkTargetHint')}</p>
-            </CardContent>
-          </Card>
-
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-lg border bg-card/60 p-2.5">
-            <p className="text-xs text-muted-foreground">{t('outputs.previewHint')}</p>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground hidden sm:inline">
-                {t('outputs.previewTarget')}:
-              </span>
-              <Select
-                value={activePreviewTarget}
-                onValueChange={(value) => {
-                  const target = value as Target;
-                  setPreviewTarget(target);
-                  if (preview.data) preview.mutate(target);
-                }}
-              >
-                <SelectTrigger className="h-8 w-36 text-xs" aria-label={t('outputs.previewTarget')}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TARGETS.map((target) => (
-                    <SelectItem key={target} value={target}>
-                      {TARGET_LABELS[target]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {preview.data ? (
-            <>
-              {preview.data.warnings.length > 0 ? (
-                <div className="shrink-0 rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-destructive">
-                  <div className="text-xs font-semibold">{t('outputs.warnings')}</div>
-                  <ul className="mt-1 space-y-1 text-xs">
-                    {preview.data.warnings.map((warning) => (
-                      <li key={warning}>• {warning}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-
-              <div className="grid gap-4 lg:grid-cols-5">
-                <Card className="flex flex-col lg:col-span-3">
-                  <CardHeader className="flex flex-row items-center justify-between py-3 border-b border-border/60">
-                    <CardTitle className="text-xs font-medium text-muted-foreground">
-                      {t('outputs.generatedNodes')} ({preview.data.count})
-                    </CardTitle>
-                    <CopyButton value={preview.data.content} size="sm" variant="outline" />
-                  </CardHeader>
-                  <CardContent className="p-3">
-                    <pre className="max-h-96 min-h-48 overflow-auto rounded-md bg-muted/40 p-3 font-mono text-xs leading-relaxed">
-                      {preview.data.content}
-                    </pre>
-                  </CardContent>
-                </Card>
-
-                <Card className="flex flex-col lg:col-span-2">
-                  <CardHeader className="flex flex-row items-center justify-between py-3 border-b border-border/60">
-                    <CardTitle className="text-xs font-medium text-muted-foreground">
-                      {t('outputs.nodeList')}
-                    </CardTitle>
-                    <Badge variant="secondary" className="text-xs tabular-nums font-normal">
-                      {preview.data.count}
-                    </Badge>
-                  </CardHeader>
-                  <CardContent className="p-3">
-                    <NodeList nodes={preview.data.nodes} className="max-h-96 overflow-y-auto" />
-                  </CardContent>
-                </Card>
-              </div>
-            </>
-          ) : (
-            <Card className="flex min-h-[220px] flex-1 items-center justify-center p-6 text-center">
-              <div className="space-y-2">
-                <Eye className="mx-auto size-8 text-muted-foreground/50" />
-                <p className="text-sm text-muted-foreground">{t('outputs.previewEmpty')}</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => preview.mutate(activePreviewTarget)}
-                  disabled={preview.isPending}
-                >
-                  {preview.isPending ? <Loader2 className="size-3.5 animate-spin mr-1" /> : null}
-                  {t('outputs.preview')}
-                </Button>
-              </div>
-            </Card>
-          )}
+        <TabsContent value="preview" className="mt-4 min-h-0 flex-1 overflow-y-auto outline-none">
+          {previewPanel}
         </TabsContent>
-
-        <TabsContent value="processors" className="mt-4 flex min-h-0 flex-1 flex-col outline-none">
-          <div className="shrink-0 pb-3">
-            <h2 className="text-sm font-semibold">{t('outputs.processors')}</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">{t('outputs.processorsHint')}</p>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-            <ProcessorEditor
-              value={processors}
-              onChange={(next) => {
-                setProcessors(next);
-                setDirty(true);
-              }}
-            />
-          </div>
+        <TabsContent value="sources" className="mt-4 min-h-0 flex-1 overflow-y-auto outline-none">
+          {sourcesPanel}
         </TabsContent>
-
-        <TabsContent
-          value="sources"
-          className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto outline-none"
-        >
-          <Card className="overflow-hidden p-0">
-            {selectedSources.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                {t('outputs.noSources')}
-              </p>
-            ) : (
-              <div className="divide-y divide-border">
-                {selectedSources.map((source, index) => (
-                  <div key={source.id} className="flex items-center gap-2 p-3 sm:px-4">
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                      {source.name}
-                    </span>
-                    <Badge variant="outline" className="text-xs text-muted-foreground">
-                      {source.nodeCount}
-                    </Badge>
-                    <div className="flex items-center gap-0.5">
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => moveSource(index, -1)}
-                        disabled={index === 0}
-                        title="Up"
-                      >
-                        <ArrowUp className="size-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => moveSource(index, 1)}
-                        disabled={index === selectedSources.length - 1}
-                        title="Down"
-                      >
-                        <ArrowDown className="size-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => {
-                          setSourceIds(sourceIds.filter((item) => item !== source.id));
-                          setDirty(true);
-                        }}
-                        title={t('common.delete')}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-
-          {availableSources.length > 0 ? (
-            <AddSource
-              sources={availableSources}
-              onAdd={(sourceId) => {
-                setSourceIds([...sourceIds, sourceId]);
-                setDirty(true);
-              }}
-            />
-          ) : null}
+        <TabsContent value="processors" className="mt-4 min-h-0 flex-1 overflow-y-auto outline-none">
+          {processorsPanel}
+        </TabsContent>
+        <TabsContent value="shares" className="mt-4 min-h-0 flex-1 overflow-y-auto outline-none">
+          {sharesPanel}
         </TabsContent>
       </Tabs>
 
-      {/* Floating Save Bar for mobile and desktop */}
+      {/* Desktop 2-column workspace */}
+      <div className="hidden lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-12 lg:gap-6">
+        <Tabs defaultValue="sources" className="lg:col-span-5 flex min-h-0 flex-col">
+          <TabsList className="w-full shrink-0 grid grid-cols-3">
+            <TabsTrigger value="sources" className="text-xs">
+              {t('outputs.sources')}
+            </TabsTrigger>
+            <TabsTrigger value="processors" className="text-xs">
+              {t('outputs.processors')}
+            </TabsTrigger>
+            <TabsTrigger value="shares" className="text-xs">
+              {t('nav.shares')}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent
+            value="sources"
+            className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1 outline-none"
+          >
+            {sourcesPanel}
+          </TabsContent>
+          <TabsContent
+            value="processors"
+            className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1 outline-none"
+          >
+            {processorsPanel}
+          </TabsContent>
+          <TabsContent
+            value="shares"
+            className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1 outline-none"
+          >
+            {sharesPanel}
+          </TabsContent>
+        </Tabs>
+
+        <div className="lg:col-span-7 flex min-h-0 flex-col overflow-y-auto pl-1">
+          {previewPanel}
+        </div>
+      </div>
+
+      {/* Floating Save Bar */}
       {dirty ? (
         <div className="fixed bottom-16 sm:bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-full border border-border bg-background/95 px-4 py-2.5 shadow-lg backdrop-blur-md transition-all animate-in fade-in slide-in-from-bottom-3">
           <span className="text-xs sm:text-sm font-medium text-foreground whitespace-nowrap">
@@ -425,43 +624,80 @@ export function OutputDetailPage() {
   );
 }
 
-function AddSource({
-  sources,
-  onAdd,
+function SortableSourceRow({
+  source,
+  index,
+  total,
+  onMove,
+  onRemove,
 }: {
-  sources: { id: number; name: string }[];
-  onAdd: (id: number) => void;
+  source: SourceDto;
+  index: number;
+  total: number;
+  onMove: (index: number, delta: number) => void;
+  onRemove: () => void;
 }) {
   const { t } = useTranslation();
-  const [value, setValue] = useState('');
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: source.id,
+  });
+
   return (
-    <div className="flex gap-2">
-      <Select value={value} onValueChange={setValue}>
-        <SelectTrigger className="flex-1">
-          <SelectValue placeholder={t('outputs.selectSources')} />
-        </SelectTrigger>
-        <SelectContent>
-          {sources.map((source) => (
-            <SelectItem key={source.id} value={`${source.id}`}>
-              {source.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Button
-        variant="outline"
-        disabled={!value}
-        onClick={() => {
-          const id = Number(value);
-          if (Number.isInteger(id) && id > 0) {
-            onAdd(id);
-            setValue('');
-          }
-        }}
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn(
+        'flex items-center gap-2 bg-card p-3 sm:px-4',
+        isDragging && 'relative z-10 shadow-md ring-1 ring-primary/30',
+      )}
+    >
+      <button
+        type="button"
+        className="cursor-grab touch-none text-muted-foreground hover:text-foreground active:cursor-grabbing"
+        aria-label={t('outputs.sourceOrder')}
+        {...attributes}
+        {...listeners}
       >
-        <Plus className="size-4 mr-1" />
-        <span>{t('common.add', '添加')}</span>
-      </Button>
+        <GripVertical className="size-4" />
+      </button>
+      <span className="min-w-0 flex-1 truncate text-sm font-medium">{source.name}</span>
+      {!source.enabled ? (
+        <Badge variant="outline" className="border-warning/40 text-warning text-[10px]">
+          {t('outputs.sourceDisabledBadge')}
+        </Badge>
+      ) : null}
+      <Badge variant="outline" className="text-xs text-muted-foreground">
+        {source.nodeCount}
+      </Badge>
+      <div className="flex items-center gap-0.5">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => onMove(index, -1)}
+          disabled={index === 0}
+          title={t('common.moveUp')}
+        >
+          <ArrowUp className="size-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => onMove(index, 1)}
+          disabled={index === total - 1}
+          title={t('common.moveDown')}
+        >
+          <ArrowDown className="size-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="text-destructive hover:text-destructive"
+          onClick={onRemove}
+          title={t('common.delete')}
+        >
+          <Trash2 className="size-3.5" />
+        </Button>
+      </div>
     </div>
   );
 }

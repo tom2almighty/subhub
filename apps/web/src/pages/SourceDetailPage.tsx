@@ -1,26 +1,32 @@
-import { type Processor, SOURCE_DEFAULT_TARGET } from '@subhub/shared';
+import { type Processor, type ProxyNode, type ProxyType, SOURCE_DEFAULT_TARGET } from '@subhub/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
+  FileUp,
   Globe,
   Link2,
   Loader2,
   Pencil,
+  Plus,
   RefreshCw,
   Search,
   Send,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { CopyButton } from '@/components/common/CopyButton';
+import { FlowBar } from '@/components/common/FlowBar';
 import { PageHeader } from '@/components/common/PageHeader';
-import { NodeList } from '@/components/nodes/NodeList';
+import { NodeList, ProtocolFilterBar } from '@/components/nodes/NodeList';
 import { CopySubscription } from '@/components/outputs/CopySubscription';
 import { ProcessorEditor } from '@/components/outputs/ProcessorEditor';
+import { TargetSharePanel } from '@/components/shares/TargetSharePanel';
+import { BatchImportDialog } from '@/components/sources/BatchImportDialog';
+import { NodeEditorDialog } from '@/components/sources/NodeEditorDialog';
 import { SourceFormDialog } from '@/components/sources/SourceFormDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -35,12 +41,21 @@ import { cn } from '@/lib/utils';
 export function SourceDetailPage() {
   const { t } = useTranslation();
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab');
   const sourceId = Number(id);
   const queryClient = useQueryClient();
   const [editOpen, setEditOpen] = useState(false);
-  const [tab, setTab] = useState('overview');
+  const [nodeEditorOpen, setNodeEditorOpen] = useState(false);
+  const [editingNodeIndex, setEditingNodeIndex] = useState<number | null>(null);
+  const [batchImportOpen, setBatchImportOpen] = useState(false);
+  const [tab, setTab] = useState(
+    initialTab === 'nodes' || initialTab === 'processors' ? initialTab : 'overview',
+  );
   const [search, setSearch] = useState('');
+  const [protocolFilter, setProtocolFilter] = useState<ProxyType | 'all'>('all');
   const [processors, setProcessors] = useState<Processor[]>([]);
+  const [selectedOrigIndices, setSelectedOrigIndices] = useState<Set<number>>(new Set());
 
   const source = useQuery({
     queryKey: ['source', sourceId],
@@ -78,18 +93,57 @@ export function SourceDetailPage() {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const saveManualNodes = useMutation({
+    mutationFn: (nextNodes: ProxyNode[]) => api.updateSource(sourceId, { nodes: nextNodes }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['source', sourceId] });
+      void queryClient.invalidateQueries({ queryKey: ['source-nodes', sourceId] });
+      void queryClient.invalidateQueries({ queryKey: ['sources'] });
+      setNodeEditorOpen(false);
+      setBatchImportOpen(false);
+      setEditingNodeIndex(null);
+      toast.success(t('common.save'));
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   const filtered = useMemo(() => {
     const list = nodes.data?.nodes ?? [];
     const keyword = search.trim().toLowerCase();
-    if (!keyword) return list;
-    return list.filter(
-      (node) =>
+    return list.filter((node) => {
+      if (protocolFilter !== 'all' && node.type !== protocolFilter) return false;
+      if (!keyword) return true;
+      return (
         node.name.toLowerCase().includes(keyword) ||
         node.server?.toLowerCase().includes(keyword) ||
         node.hostname?.toLowerCase().includes(keyword) ||
-        node.type.toLowerCase().includes(keyword),
-    );
-  }, [nodes.data, search]);
+        node.type.toLowerCase().includes(keyword)
+      );
+    });
+  }, [nodes.data, search, protocolFilter]);
+
+  const allNodes = nodes.data?.nodes ?? [];
+  const warnings = nodes.data?.warnings ?? [];
+
+  const duplicateCount = useMemo(() => {
+    const seen = new Set<string>();
+    let dup = 0;
+    for (const node of allNodes) {
+      const key = `${node.type}|${node.server ?? node.hostname ?? ''}|${node.port ?? ''}`;
+      if (seen.has(key)) dup += 1;
+      else seen.add(key);
+    }
+    return dup;
+  }, [allNodes]);
+
+  const filteredSelectedSet = useMemo(() => {
+    const set = new Set<number>();
+    filtered.forEach((node, idx) => {
+      const origIdx = allNodes.indexOf(node);
+      if (origIdx >= 0 && selectedOrigIndices.has(origIdx)) set.add(idx);
+    });
+    return set;
+  }, [filtered, allNodes, selectedOrigIndices]);
 
   if (source.isLoading) {
     return (
@@ -112,8 +166,18 @@ export function SourceDetailPage() {
   }
 
   const data = source.data;
-  const allNodes = nodes.data?.nodes ?? [];
-  const warnings = nodes.data?.warnings ?? [];
+
+  function dedupeManualNodes() {
+    const seen = new Set<string>();
+    const deduped = allNodes.filter((node) => {
+      const key = `${node.type}|${node.server ?? node.hostname ?? ''}|${node.port ?? ''}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    setSelectedOrigIndices(new Set());
+    saveManualNodes.mutate(deduped);
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -208,17 +272,20 @@ export function SourceDetailPage() {
           </Card>
 
           <Card>
-            <CardContent className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-4 sm:gap-6 sm:p-6">
-              <Metric
-                label={t('sources.nodes')}
-                value={String(allNodes.length || data.nodeCount)}
-              />
-              <Metric label={t('sources.flow')} value={formatFlow(data.flow)} />
-              <Metric label={t('sources.expiresAt')} value={formatExpire(data.flow?.expire)} />
-              <Metric
-                label={t('common.enabled')}
-                value={data.enabled ? t('common.enabled') : t('common.disabled')}
-              />
+            <CardContent className="space-y-4 p-4 sm:p-6">
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 sm:gap-6">
+                <Metric
+                  label={t('sources.nodes')}
+                  value={String(allNodes.length || data.nodeCount)}
+                />
+                <Metric label={t('sources.flow')} value={formatFlow(data.flow)} />
+                <Metric label={t('sources.expiresAt')} value={formatExpire(data.flow?.expire)} />
+                <Metric
+                  label={t('common.enabled')}
+                  value={data.enabled ? t('common.enabled') : t('common.disabled')}
+                />
+              </div>
+              {data.flow ? <FlowBar flow={data.flow} /> : null}
             </CardContent>
           </Card>
 
@@ -250,6 +317,8 @@ export function SourceDetailPage() {
               </CardContent>
             </Card>
           ) : null}
+
+          <TargetSharePanel kind="source" targetId={sourceId} />
         </TabsContent>
 
         <TabsContent
@@ -345,16 +414,157 @@ export function SourceDetailPage() {
                 onChange={(event) => setSearch(event.target.value)}
               />
             </div>
-            <span className="text-xs text-muted-foreground sm:ml-2 sm:shrink-0">
-              {t('outputs.nodeResults', { count: filtered.length })}
-            </span>
+            <div className="flex items-center justify-between gap-2 sm:justify-end">
+              <span className="text-xs text-muted-foreground sm:shrink-0">
+                {t('outputs.nodeResults', { count: filtered.length })}
+              </span>
+              {data.kind === 'manual' ? (
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setBatchImportOpen(true)}
+                  >
+                    <FileUp className="size-3.5 mr-1" />
+                    {t('sources.batchImport')}
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setEditingNodeIndex(null);
+                      setNodeEditorOpen(true);
+                    }}
+                  >
+                    <Plus className="size-3.5 mr-1" />
+                    {t('sources.addNode')}
+                  </Button>
+                </div>
+              ) : null}
+            </div>
           </div>
+
+          <ProtocolFilterBar
+            nodes={allNodes}
+            selected={protocolFilter}
+            onSelect={setProtocolFilter}
+            allLabel={t('common.all')}
+          />
 
           {warnings.length ? <Warnings items={warnings} /> : null}
 
+          {data.kind === 'manual' && duplicateCount > 0 ? (
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+              <span>{t('sources.duplicateFound', { count: duplicateCount })}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 border-warning/40 text-warning hover:bg-warning/15"
+                onClick={dedupeManualNodes}
+                disabled={saveManualNodes.isPending}
+              >
+                {t('sources.dedupeNow')}
+              </Button>
+            </div>
+          ) : null}
+
+          {data.kind === 'manual' && selectedOrigIndices.size > 0 ? (
+            <div className="flex shrink-0 items-center justify-between gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-xs">
+              <span className="font-medium">
+                {t('sources.selectedCount', { count: selectedOrigIndices.size })}
+              </span>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setSelectedOrigIndices(new Set())}
+                >
+                  {t('common.cancel')}
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="h-7 text-xs"
+                  disabled={saveManualNodes.isPending}
+                  onClick={() => {
+                    const next = allNodes.filter((_, i) => !selectedOrigIndices.has(i));
+                    setSelectedOrigIndices(new Set());
+                    saveManualNodes.mutate(next);
+                  }}
+                >
+                  {t('sources.deleteSelected')}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
           <Card className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
             {filtered.length > 0 ? (
-              <NodeList nodes={filtered} className="min-h-0 flex-1 overflow-y-auto p-3" />
+              <NodeList
+                nodes={filtered}
+                className="min-h-0 flex-1 overflow-y-auto p-3"
+                selectable={data.kind === 'manual'}
+                selectedIndices={filteredSelectedSet}
+                onToggleSelect={(idx) => {
+                  const targetNode = filtered[idx];
+                  const origIdx = allNodes.indexOf(targetNode);
+                  if (origIdx < 0) return;
+                  setSelectedOrigIndices((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(origIdx)) next.delete(origIdx);
+                    else next.add(origIdx);
+                    return next;
+                  });
+                }}
+                onEditNode={
+                  data.kind === 'manual'
+                    ? (idx) => {
+                        const targetNode = filtered[idx];
+                        const origIdx = allNodes.indexOf(targetNode);
+                        if (origIdx >= 0) {
+                          setEditingNodeIndex(origIdx);
+                          setNodeEditorOpen(true);
+                        }
+                      }
+                    : undefined
+                }
+                onDeleteNode={
+                  data.kind === 'manual'
+                    ? (idx) => {
+                        const targetNode = filtered[idx];
+                        const origIdx = allNodes.indexOf(targetNode);
+                        if (origIdx >= 0) {
+                          const next = allNodes.filter((_, i) => i !== origIdx);
+                          saveManualNodes.mutate(next);
+                        }
+                      }
+                    : undefined
+                }
+              />
+            ) : data.kind === 'manual' && allNodes.length === 0 ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 py-12 text-center">
+                <p className="text-sm text-muted-foreground">{t('sources.nodeFormHint')}</p>
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setBatchImportOpen(true)}
+                  >
+                    <FileUp className="size-3.5 mr-1" />
+                    {t('sources.batchImport')}
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setEditingNodeIndex(null);
+                      setNodeEditorOpen(true);
+                    }}
+                  >
+                    <Plus className="size-3.5 mr-1" />
+                    {t('sources.addNode')}
+                  </Button>
+                </div>
+              </div>
             ) : (
               <p className="flex flex-1 items-center justify-center py-12 text-sm text-muted-foreground">
                 {t('common.none')}
@@ -365,6 +575,37 @@ export function SourceDetailPage() {
       </Tabs>
 
       <SourceFormDialog open={editOpen} onOpenChange={setEditOpen} source={data} />
+
+      {data.kind === 'manual' ? (
+        <>
+          <NodeEditorDialog
+            open={nodeEditorOpen}
+            onOpenChange={setNodeEditorOpen}
+            initialNode={editingNodeIndex !== null ? allNodes[editingNodeIndex] : undefined}
+            saving={saveManualNodes.isPending}
+            onSave={(node: ProxyNode) => {
+              const next =
+                editingNodeIndex !== null
+                  ? allNodes.map((n, i) => (i === editingNodeIndex ? node : n))
+                  : [...allNodes, node];
+              saveManualNodes.mutate(next, {
+                onSuccess: () => setNodeEditorOpen(false),
+              });
+            }}
+          />
+          <BatchImportDialog
+            open={batchImportOpen}
+            onOpenChange={setBatchImportOpen}
+            saving={saveManualNodes.isPending}
+            onImport={(imported: ProxyNode[], mode) => {
+              const next = mode === 'replace' ? imported : [...allNodes, ...imported];
+              saveManualNodes.mutate(next, {
+                onSuccess: () => setBatchImportOpen(false),
+              });
+            }}
+          />
+        </>
+      ) : null}
     </div>
   );
 }
