@@ -68,6 +68,13 @@ function normalizeMihomoProxy(raw: Record<string, any>): ProxyNode {
   if (!knownTypes.has(type)) {
     throw new Error(`Unsupported proxy type: ${type}`);
   }
+  if (type === 'tailscale') {
+    return {
+      ...(raw as ProxyNode),
+      name: normalizeName(raw.name, 'tailscale'),
+      type: 'tailscale',
+    };
+  }
   const server = `${raw.server ?? ''}`.trim();
   const port = parseIntOrUndefined(raw.port);
   if (!server || !port) throw new Error('Proxy is missing server or port');

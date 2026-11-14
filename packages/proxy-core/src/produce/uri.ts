@@ -6,7 +6,7 @@ function nameOf(node: ProxyNode): string {
 }
 
 function hostOf(node: ProxyNode): string {
-  return formatHost(node.server);
+  return formatHost(node.server ?? '');
 }
 
 function query(params: Record<string, string | undefined>): string {

@@ -5,8 +5,15 @@ import { cn } from '@/lib/utils';
 export interface NodeListItem {
   name: string;
   type: ProxyType;
-  server: string;
-  port: number;
+  server?: string;
+  port?: number;
+  hostname?: string;
+  'control-url'?: string;
+}
+
+function endpoint(node: NodeListItem): string {
+  if (node.server) return `${node.server}:${node.port ?? ''}`;
+  return node.hostname ?? node['control-url'] ?? 'tailscale';
 }
 
 export function NodeList({
@@ -29,7 +36,7 @@ export function NodeList({
     <ul className={cn('grid content-start gap-2', gridColsClass, className)}>
       {nodes.map((node) => (
         <li
-          key={`${node.type}-${node.server}-${node.port}-${node.name}`}
+          key={`${node.type}-${endpoint(node)}-${node.name}`}
           className="flex min-w-0 items-start justify-between gap-2.5 rounded-lg border border-border bg-card p-2.5 text-xs transition-colors hover:border-foreground/20 hover:bg-accent/40"
         >
           <div className="min-w-0 flex-1 space-y-1">
@@ -37,7 +44,7 @@ export function NodeList({
               {node.name}
             </div>
             <div className="break-all font-mono text-[11px] tabular-nums text-muted-foreground">
-              {node.server}:{node.port}
+              {endpoint(node)}
             </div>
           </div>
           <Badge

@@ -10,6 +10,7 @@ export const PROXY_TYPES = [
   'anytls',
   'wireguard',
   'snell',
+  'tailscale',
   'http',
   'socks5',
 ] as const;
@@ -81,8 +82,9 @@ export interface PluginOptions {
 export interface ProxyNode {
   name: string;
   type: ProxyType;
-  server: string;
-  port: number;
+  /** Tailscale nodes have no endpoint, so server and port are optional for them. */
+  server?: string;
+  port?: number;
   udp?: boolean;
   tfo?: boolean;
   'ip-version'?: string;
@@ -148,6 +150,17 @@ export interface ProxyNode {
   'obfs-opts'?: PluginOptions;
   reuse?: boolean;
 
+  // tailscale
+  'control-url'?: string;
+  'auth-key'?: string;
+  hostname?: string;
+  'exit-node'?: string;
+  'accept-routes'?: boolean;
+  'accept-dns'?: boolean;
+  'magic-dns'?: boolean;
+  'path-mode'?: string;
+  'idle-session-timeout'?: number;
+
   [key: string]: unknown;
 }
 
@@ -155,10 +168,13 @@ export const proxySchema = z
   .object({
     name: z.string().min(1),
     type: z.enum(PROXY_TYPES),
-    server: z.string().min(1),
-    port: z.number().int().min(1).max(65535),
+    server: z.string().min(1).optional(),
+    port: z.number().int().min(1).max(65535).optional(),
   })
-  .passthrough();
+  .passthrough()
+  .refine((node) => node.type === 'tailscale' || (node.server && node.port), {
+    message: 'server and port are required',
+  });
 
 export const sourceKindSchema = z.enum(['remote', 'manual']);
 export const targetSchema = z.enum(TARGETS);
@@ -476,8 +492,10 @@ export interface ShareDto {
 export interface PreviewNode {
   name: string;
   type: ProxyType;
-  server: string;
-  port: number;
+  server?: string;
+  port?: number;
+  hostname?: string;
+  'control-url'?: string;
 }
 
 export interface PreviewDto {

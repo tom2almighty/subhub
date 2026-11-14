@@ -182,9 +182,10 @@ export async function resolveNodeServers(
     const chunk = result.slice(start, start + MAX_CONCURRENCY);
     await Promise.all(
       chunk.map(async (node, offset) => {
-        if (isIP(node.server)) return;
+        const host = node.server;
+        if (!host || isIP(host)) return;
         try {
-          const address = await resolveHost(node.server, servers, {
+          const address = await resolveHost(host, servers, {
             timeout: args.timeoutMs,
             cacheTtlMinutes: args.cacheTtlMinutes,
           });

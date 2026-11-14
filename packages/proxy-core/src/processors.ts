@@ -161,7 +161,7 @@ export async function applyProcessors(
         const regex = compileRegex(processor.args.pattern, processor.args.flags);
         const keep = processor.args.mode === 'include';
         nodes = nodes.filter((node) => {
-          const value = processor.args.field === 'server' ? node.server : node.name;
+          const value = processor.args.field === 'server' ? (node.server ?? '') : node.name;
           return regex.test(value) === keep;
         });
         break;
@@ -181,8 +181,9 @@ export async function applyProcessors(
       case 'dedupe': {
         const seen = new Set<string>();
         nodes = nodes.filter((node) => {
+          const endpoint = node.server ?? node.hostname ?? node['control-url'] ?? '';
           const key =
-            processor.args.by === 'server' ? `${node.server}:${node.port}` : fingerprint(node);
+            processor.args.by === 'server' ? `${endpoint}:${node.port ?? ''}` : fingerprint(node);
           if (seen.has(key)) return false;
           seen.add(key);
           return true;
@@ -193,6 +194,7 @@ export async function applyProcessors(
         const regex = compileRegex(processor.args.pattern, processor.args.flags);
         nodes = nodes.map((node) => {
           if (processor.args.field === 'server') {
+            if (!node.server) return node;
             return { ...node, server: node.server.replace(regex, processor.args.replacement) };
           }
           return { ...node, name: node.name.replace(regex, processor.args.replacement) };

@@ -90,6 +90,28 @@ export function parseIntOrUndefined(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+const LOON_IP_MODES: Record<string, string> = {
+  'v4-only': 'ipv4',
+  'v6-only': 'ipv6',
+  'prefer-v4': 'ipv4-prefer',
+  'prefer-v6': 'ipv6-prefer',
+};
+
+/** Convert a Loon `ip-mode` value to the Mihomo `ip-version` convention. */
+export function parseLoonIpMode(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  return LOON_IP_MODES[value] ?? value;
+}
+
+/** Convert a Mihomo `ip-version` value to the Loon `ip-mode` convention. */
+export function formatLoonIpMode(value: unknown): string | undefined {
+  if (value == null || value === '') return undefined;
+  for (const [loon, mihomo] of Object.entries(LOON_IP_MODES)) {
+    if (mihomo === value) return loon;
+  }
+  return `${value}`;
+}
+
 export function cleanHost(host: string): string {
   return host.replace(/^\[/, '').replace(/\]$/, '');
 }

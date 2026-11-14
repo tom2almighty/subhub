@@ -228,6 +228,8 @@ export async function previewOutput(id: number, target?: Target): Promise<Previe
       type: node.type,
       server: node.server,
       port: node.port,
+      hostname: node.hostname,
+      'control-url': node['control-url'],
     })),
     content: built.content,
     warnings: built.warnings,

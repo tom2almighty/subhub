@@ -85,7 +85,8 @@ export function SourceDetailPage() {
     return list.filter(
       (node) =>
         node.name.toLowerCase().includes(keyword) ||
-        node.server.toLowerCase().includes(keyword) ||
+        node.server?.toLowerCase().includes(keyword) ||
+        node.hostname?.toLowerCase().includes(keyword) ||
         node.type.toLowerCase().includes(keyword),
     );
   }, [nodes.data, search]);

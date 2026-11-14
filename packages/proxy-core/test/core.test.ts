@@ -411,6 +411,34 @@ describe('parseNodes', () => {
     });
   });
 
+  it('parses Loon Tailscale nodes', () => {
+    const { nodes, warnings } = parseNodes(
+      [
+        'Tailnet=tailscale',
+        'Exit=tailscale,control-url="https://headscale.example.com/?key=a,b",auth-key="test-key=",hostname="loon,device",exit-node=auto,accept-routes=false,accept-dns=true,magic-dns=false,path-mode=derp,mtu=1200,idle-session-timeout=0,udp=false,ip-mode=prefer-v6,block-quic=false',
+      ].join('\n'),
+    );
+    expect(warnings).toEqual([]);
+    expect(nodes[0]).toEqual({ name: 'Tailnet', type: 'tailscale', udp: true });
+    expect(nodes[1]).toMatchObject({
+      name: 'Exit',
+      type: 'tailscale',
+      'control-url': 'https://headscale.example.com/?key=a,b',
+      'auth-key': 'test-key=',
+      hostname: 'loon,device',
+      'exit-node': 'auto:any',
+      'accept-routes': false,
+      'accept-dns': true,
+      'magic-dns': false,
+      'path-mode': 'derp',
+      mtu: 1200,
+      'idle-session-timeout': 0,
+      'ip-version': 'ipv6-prefer',
+      'block-quic': 'off',
+      udp: false,
+    });
+  });
+
   it('parses Quantumult X proxy lines', () => {
     const { nodes, warnings } = parseNodes(
       'vless=5.6.7.8:443, method=none, password=uuid, obfs=wss, obfs-uri=/ws, obfs-host=cdn.example.com, tag=WS',
@@ -494,5 +522,41 @@ describe('parseNodes', () => {
         tls: true,
       });
     }
+  });
+
+  it('emits and round-trips Loon Tailscale nodes', () => {
+    const { nodes } = parseNodes(
+      'Exit=tailscale,control-url="https://headscale.example.com/?key=a,b",auth-key="test-key=",hostname="loon,device",exit-node=auto,accept-routes=false,accept-dns=true,mtu=1200,ip-mode=prefer-v6,block-quic=false',
+    );
+    const { content, warnings } = produce(nodes, 'loon');
+    expect(warnings).toEqual([]);
+    expect(content).toContain('Exit=tailscale');
+    expect(content).toContain('control-url="https://headscale.example.com/?key=a,b"');
+    expect(content).toContain('hostname="loon,device"');
+    expect(content).toContain('exit-node=auto');
+    expect(content).toContain('ip-mode=prefer-v6');
+    expect(content).toContain('block-quic=false');
+    expect(parseNodes(content).nodes).toEqual(nodes);
+  });
+
+  it('exports a Mihomo Tailscale node to Loon', () => {
+    const { nodes } = parseMihomoYaml(
+      'proxies:\n' +
+        '  - name: Tailnet\n' +
+        '    type: tailscale\n' +
+        '    control-url: https://headscale.example.com\n' +
+        '    exit-node: auto:any\n' +
+        '    accept-routes: false\n' +
+        '    udp: false\n' +
+        '    ip-version: ipv6-prefer\n',
+    );
+    expect(nodes[0]?.type).toBe('tailscale');
+    expect(nodes[0]?.server).toBeUndefined();
+    const { content, warnings } = produce(nodes, 'loon');
+    expect(warnings).toEqual([]);
+    expect(content).toContain('Tailnet=tailscale');
+    expect(content).toContain('control-url="https://headscale.example.com"');
+    expect(content).toContain('exit-node=auto');
+    expect(content).toContain('ip-mode=prefer-v6');
   });
 });

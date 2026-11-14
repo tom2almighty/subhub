@@ -1,5 +1,11 @@
 import type { ProxyNode, ProxyType } from '@subhub/shared';
-import { parseBool, parseIntOrUndefined, splitHostPort, splitList } from '../util.js';
+import {
+  parseBool,
+  parseIntOrUndefined,
+  parseLoonIpMode,
+  splitHostPort,
+  splitList,
+} from '../util.js';
 
 type Params = Record<string, string>;
 
@@ -15,6 +21,7 @@ const SURGE_TYPES: Record<string, ProxyType> = {
   'tuic-v5': 'tuic',
   anytls: 'anytls',
   snell: 'snell',
+  tailscale: 'tailscale',
   http: 'http',
   https: 'http',
   socks5: 'socks5',
@@ -157,15 +164,43 @@ function buildNode(type: ProxyType, server: string, port: number, name: string):
   return { name, type, server, port };
 }
 
+function parseTailscale(name: string, tokens: string[]): ProxyNode {
+  const params = parseParams(tokens);
+  const node: ProxyNode = { name, type: 'tailscale' };
+  for (const key of ['control-url', 'auth-key', 'hostname', 'path-mode'] as const) {
+    if (params[key]) node[key] = params[key];
+  }
+  const exitNode = params['exit-node'];
+  if (exitNode === 'auto') node['exit-node'] = 'auto:any';
+  else if (exitNode === 'none') node['exit-node'] = '';
+  else if (exitNode) node['exit-node'] = exitNode;
+  for (const key of ['accept-routes', 'accept-dns', 'magic-dns'] as const) {
+    const value = parseBool(params[key]);
+    if (value !== undefined) node[key] = value;
+  }
+  if (params.mtu) node.mtu = parseIntOrUndefined(params.mtu);
+  if (params['idle-session-timeout']) {
+    node['idle-session-timeout'] = parseIntOrUndefined(params['idle-session-timeout']);
+  }
+  if (params['ip-mode']) node['ip-version'] = parseLoonIpMode(params['ip-mode']);
+  const blockQuic = parseBool(params['block-quic']);
+  if (blockQuic !== undefined) node['block-quic'] = blockQuic ? 'on' : 'off';
+  node.udp = parseBool(params.udp, true);
+  return node;
+}
+
 function parseSurgeLike(line: string): ProxyNode | null {
-  const match = /^(.*?)\s*=\s*([A-Za-z0-9_-]+)\s*,\s*(.*)$/.exec(line);
+  const match = /^(.*?)\s*=\s*([A-Za-z0-9_-]+)\s*(?:,\s*(.*))?$/.exec(line);
   if (!match) return null;
   const [, rawName, rawType, rest] = match;
-  if (!rawName || !rawType || rest === undefined) return null;
+  if (!rawName || !rawType) return null;
   const type = SURGE_TYPES[rawType.toLowerCase()];
   if (!type) return null;
 
-  const tokens = splitTokens(rest);
+  const tokens = splitTokens(rest ?? '');
+  const name = unquote(rawName);
+  if (type === 'tailscale') return parseTailscale(name || 'tailscale', tokens);
+
   const server = unquote(tokens[0]);
   const port = Number.parseInt(tokens[1] ?? '', 10);
   if (!server || !Number.isInteger(port) || port <= 0 || port > 65535) return null;
@@ -174,8 +209,7 @@ function parseSurgeLike(line: string): ProxyNode | null {
   const params = parseParams(tail);
   const positional = isPositional(tail);
   const tlsByType = rawType.toLowerCase() === 'https';
-  const name = unquote(rawName) || `${type} ${server}:${port}`;
-  const node = buildNode(type, server, port, name);
+  const node = buildNode(type, server, port, name || `${type} ${server}:${port}`);
 
   applyTls(node, params);
   applySurgeTransport(node, params);

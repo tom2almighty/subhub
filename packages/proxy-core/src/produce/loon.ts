@@ -1,6 +1,6 @@
 import type { ProxyNode } from '@subhub/shared';
 import { quoteIfNeeded, quoteText } from '../text.js';
-import { splitList } from '../util.js';
+import { formatLoonIpMode, splitList } from '../util.js';
 
 function sanitizeName(value: string): string {
   return value.replace(/[=,]/g, '').trim();
@@ -179,6 +179,34 @@ function socks5(node: ProxyNode): string {
   });
 }
 
+function bool(value: unknown): string | undefined {
+  return value == null ? undefined : `${value}`;
+}
+
+function tailscale(node: ProxyNode): string {
+  const base = `${sanitizeName(node.name)}=tailscale`;
+  let exitNode = node['exit-node'];
+  if (exitNode === 'auto:any') exitNode = 'auto';
+  if (exitNode === '') exitNode = 'none';
+  const blockQuic = node['block-quic'];
+  return append(base, {
+    'control-url': node['control-url'] ? quoteText(node['control-url']) : undefined,
+    'auth-key': node['auth-key'] ? quoteText(node['auth-key']) : undefined,
+    hostname: node.hostname ? quoteIfNeeded(node.hostname) : undefined,
+    'exit-node': exitNode ? quoteIfNeeded(exitNode) : undefined,
+    'accept-routes': bool(node['accept-routes']),
+    'accept-dns': bool(node['accept-dns']),
+    'magic-dns': bool(node['magic-dns']),
+    'path-mode': node['path-mode'] ? quoteIfNeeded(node['path-mode']) : undefined,
+    mtu: node.mtu == null ? undefined : `${node.mtu}`,
+    'idle-session-timeout':
+      node['idle-session-timeout'] == null ? undefined : `${node['idle-session-timeout']}`,
+    'ip-mode': formatLoonIpMode(node['ip-version']),
+    udp: bool(node.udp),
+    'block-quic': blockQuic === 'on' ? 'true' : blockQuic === 'off' ? 'false' : undefined,
+  });
+}
+
 export function produceLoonProxy(node: ProxyNode): string {
   switch (node.type) {
     case 'ss':
@@ -197,6 +225,8 @@ export function produceLoonProxy(node: ProxyNode): string {
       return http(node);
     case 'socks5':
       return socks5(node);
+    case 'tailscale':
+      return tailscale(node);
     default:
       throw new Error(`Loon does not support proxy type ${node.type}`);
   }
