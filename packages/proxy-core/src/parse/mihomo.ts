@@ -31,6 +31,16 @@ function normalizeTransport(node: ProxyNode, raw: Record<string, any>) {
     const opts = isPlainObject(raw['grpc-opts']) ? raw['grpc-opts'] : {};
     node['grpc-opts'] = {
       'grpc-service-name': `${opts['grpc-service-name'] ?? ''}`,
+      'grpc-mode': opts['grpc-mode'],
+      'grpc-authority': opts['grpc-authority'],
+    };
+  } else if (network === 'xhttp') {
+    const opts = isPlainObject(raw['xhttp-opts']) ? raw['xhttp-opts'] : {};
+    node['xhttp-opts'] = {
+      path: `${opts.path ?? '/'}`,
+      host: opts.host,
+      mode: opts.mode,
+      headers: isPlainObject(opts.headers) ? opts.headers : {},
     };
   } else if (network === 'h2') {
     const opts = isPlainObject(raw['h2-opts']) ? raw['h2-opts'] : {};

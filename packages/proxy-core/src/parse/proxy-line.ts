@@ -118,19 +118,23 @@ function applyTls(node: ProxyNode, params: Params): void {
   }
 }
 
+function parseHeaderPairs(value: string | undefined): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (!value) return headers;
+  for (const pair of value.split('|')) {
+    const index = pair.indexOf(':');
+    if (index <= 0) continue;
+    headers[pair.slice(0, index).trim()] = pair.slice(index + 1).trim();
+  }
+  return headers;
+}
+
 function applySurgeTransport(node: ProxyNode, params: Params): void {
   if (parseBool(params.ws) || params.transport === 'ws') {
     node.network = 'ws';
-    const headers: Record<string, string> = {};
+    const headers = parseHeaderPairs(params['ws-headers']);
     const host = params.host ?? params['ws-host'];
-    if (host) headers.Host = host;
-    if (params['ws-headers']) {
-      for (const pair of params['ws-headers'].split('|')) {
-        const index = pair.indexOf(':');
-        if (index <= 0) continue;
-        headers[pair.slice(0, index).trim()] = pair.slice(index + 1).trim();
-      }
-    }
+    if (host && !headers.Host) headers.Host = host;
     node['ws-opts'] = { path: params['ws-path'] ?? params.path ?? '/', headers };
     return;
   }
@@ -138,6 +142,18 @@ function applySurgeTransport(node: ProxyNode, params: Params): void {
     node.network = 'grpc';
     node['grpc-opts'] = {
       'grpc-service-name': params['grpc-service-name'] ?? params.path ?? '',
+      'grpc-mode': params['grpc-mode'],
+      'grpc-authority': params['grpc-authority'],
+    };
+    return;
+  }
+  if (parseBool(params.xhttp) || params.transport === 'xhttp') {
+    node.network = 'xhttp';
+    node['xhttp-opts'] = {
+      path: params['xhttp-path'] ?? params.path ?? '/',
+      host: params['xhttp-host'] ?? params.host,
+      mode: params['xhttp-mode'],
+      headers: parseHeaderPairs(params['xhttp-headers']),
     };
     return;
   }
@@ -253,6 +269,7 @@ function parseSurgeLike(line: string): ProxyNode | null {
     }
     case 'vless': {
       node.uuid = positional ? unquote(tail[0]) : (params.username ?? params.password ?? '');
+      if (params.encryption && params.encryption !== 'none') node.encryption = params.encryption;
       node.udp = true;
       break;
     }

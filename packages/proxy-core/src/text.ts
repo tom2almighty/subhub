@@ -78,6 +78,7 @@ export function normalizeNodeText(node: ProxyNode): ProxyNode {
   if (node.alpn) node.alpn = node.alpn.map((item) => unquoteText(item)).filter(Boolean);
   normalizeTransport(node['ws-opts']);
   normalizeTransport(node['grpc-opts']);
+  normalizeTransport(node['xhttp-opts']);
   normalizeTransport(node['h2-opts']);
   normalizeTransport(node['http-opts']);
   normalizePlugin(node['plugin-opts']);

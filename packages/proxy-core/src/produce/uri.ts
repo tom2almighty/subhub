@@ -18,7 +18,10 @@ function query(params: Record<string, string | undefined>): string {
   return result ? `?${result}` : '';
 }
 
-function firstPath(node: ProxyNode, key: 'ws-opts' | 'h2-opts' | 'http-opts'): string | undefined {
+function firstPath(
+  node: ProxyNode,
+  key: 'ws-opts' | 'xhttp-opts' | 'h2-opts' | 'http-opts',
+): string | undefined {
   const value = node[key]?.path;
   if (Array.isArray(value)) return value[0] == null ? undefined : `${value[0]}`;
   return value == null ? undefined : `${value}`;
@@ -33,6 +36,12 @@ function transportQuery(node: ProxyNode): Record<string, string | undefined> {
   } else if (network === 'grpc') {
     params.serviceName = node['grpc-opts']?.['grpc-service-name'];
     params.mode = node['grpc-opts']?.['grpc-mode'];
+  } else if (network === 'xhttp') {
+    const opts = node['xhttp-opts'];
+    const host = opts?.host ?? opts?.headers?.Host;
+    params.path = firstPath(node, 'xhttp-opts');
+    params.host = Array.isArray(host) ? host[0] : host;
+    params.mode = opts?.mode;
   } else if (network === 'h2' || network === 'http') {
     params.path = firstPath(node, 'h2-opts') ?? firstPath(node, 'http-opts');
     const host = node['h2-opts']?.host ?? node['http-opts']?.headers?.Host;
@@ -112,7 +121,7 @@ function vmessUri(node: ProxyNode): string {
 
 function vlessUri(node: ProxyNode): string {
   const params: Record<string, string | undefined> = {
-    encryption: 'none',
+    encryption: node.encryption ?? 'none',
     ...securityQuery(node),
     ...transportQuery(node),
   };

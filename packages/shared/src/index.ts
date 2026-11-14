@@ -50,6 +50,7 @@ export interface TransportOptions {
   path?: string;
   headers?: Record<string, string>;
   host?: string | string[];
+  mode?: string;
   'grpc-service-name'?: string;
   'grpc-mode'?: string;
   'grpc-authority'?: string;
@@ -113,12 +114,14 @@ export interface ProxyNode {
   'tls-fingerprint'?: string;
   'client-fingerprint'?: string;
   flow?: string;
+  encryption?: string;
   'reality-opts'?: RealityOptions;
 
   // transport
   network?: string;
   'ws-opts'?: TransportOptions;
   'grpc-opts'?: TransportOptions;
+  'xhttp-opts'?: TransportOptions;
   'h2-opts'?: TransportOptions;
   'http-opts'?: TransportOptions;
 

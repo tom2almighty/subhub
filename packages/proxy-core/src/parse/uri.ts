@@ -185,7 +185,7 @@ function parseVmessUrl(line: string): ProxyNode {
 function applyTransport(
   node: ProxyNode,
   network: string,
-  options: { host?: string; path?: string; serviceName?: string },
+  options: { host?: string; path?: string; serviceName?: string; mode?: string },
 ) {
   const net = network.toLowerCase();
   if (net === 'tcp' || net === 'raw' || net === '') return;
@@ -201,6 +201,13 @@ function applyTransport(
   } else if (net === 'grpc') {
     node['grpc-opts'] = {
       'grpc-service-name': options.serviceName ?? options.path ?? '',
+      'grpc-mode': options.mode,
+    };
+  } else if (net === 'xhttp') {
+    node['xhttp-opts'] = {
+      path: options.path ?? '/',
+      host: options.host || undefined,
+      mode: options.mode,
     };
   } else if (net === 'h2' || net === 'http') {
     node['h2-opts'] = {
@@ -237,6 +244,7 @@ function parseVless(line: string): ProxyNode {
     };
   }
   if (query.flow) node.flow = query.flow;
+  if (query.encryption && query.encryption !== 'none') node.encryption = query.encryption;
   if (query.alpn) node.alpn = query.alpn.split(',');
   if (query.fp) node['client-fingerprint'] = query.fp;
   if (parseBool(query.allowInsecure ?? query.insecure)) node['skip-cert-verify'] = true;
@@ -244,6 +252,7 @@ function parseVless(line: string): ProxyNode {
     host: query.host ?? '',
     path: query.path ?? '',
     serviceName: query.serviceName ?? '',
+    mode: query.mode,
   });
   return node;
 }

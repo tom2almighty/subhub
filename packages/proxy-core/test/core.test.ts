@@ -69,6 +69,21 @@ describe('parseUri', () => {
     expect(node['ws-opts']).toEqual({ path: '/ws', headers: { Host: 'cdn.example.com' } });
   });
 
+  it('parses VLESS XHTTP with encryption', () => {
+    const encryption = 'mlkem768x25519plus.native.0rtt.100-111-1111.AAAA';
+    const node = parseUri(
+      'vless://11111111-2222-3333-4444-555555555555@example.com:443' +
+        '?security=tls&type=xhttp&path=%2Fxhttp%3Fa%3D1%2C2&host=cdn.example.com' +
+        `&mode=stream-one&encryption=${encryption}#X`,
+    );
+    expect(node).toMatchObject({ type: 'vless', network: 'xhttp', tls: true, encryption });
+    expect(node['xhttp-opts']).toMatchObject({
+      path: '/xhttp?a=1,2',
+      host: 'cdn.example.com',
+      mode: 'stream-one',
+    });
+  });
+
   it('parses Shadowsocks SIP002', () => {
     expect(parseUri(SS_URI)).toMatchObject({
       type: 'ss',
@@ -168,6 +183,81 @@ describe('produce', () => {
     expect(line).toContain('ws-path=/ws');
     expect(line).toContain('ws-headers="Host:cdn.example.com"');
     expect(line).toContain('tls=true');
+  });
+
+  it('emits Surge VLESS XHTTP with encryption', () => {
+    const encryption = 'mlkem768x25519plus.native.0rtt.100-111-1111.AAAA';
+    const line = produceSurgeProxy({
+      name: 'XHTTP',
+      type: 'vless',
+      server: 'example.com',
+      port: 443,
+      uuid: '11111111-2222-3333-4444-555555555555',
+      tls: true,
+      flow: 'xtls-rprx-vision',
+      encryption,
+      network: 'xhttp',
+      'xhttp-opts': {
+        path: '/path?a=1,2',
+        host: 'cdn.example.com',
+        mode: 'stream-one',
+        headers: { 'User-Agent': 'UA' },
+      },
+    });
+    expect(line).toContain('xhttp=true');
+    expect(line).toContain('xhttp-path="/path?a=1,2"');
+    expect(line).toContain('xhttp-host=cdn.example.com');
+    expect(line).toContain('xhttp-mode=stream-one');
+    expect(line).toContain('xhttp-headers="User-Agent:UA"');
+    expect(line).toContain(`encryption=${encryption}`);
+    expect(line).toContain('flow=xtls-rprx-vision');
+    expect(line).toContain('tls=true');
+  });
+
+  it('emits Surge VLESS gRPC mode and authority', () => {
+    const line = produceSurgeProxy({
+      name: 'GRPC',
+      type: 'vless',
+      server: '1.2.3.4',
+      port: 443,
+      uuid: '11111111-2222-3333-4444-555555555555',
+      tls: true,
+      network: 'grpc',
+      'grpc-opts': {
+        'grpc-service-name': 'svc',
+        'grpc-mode': 'multi',
+        'grpc-authority': 'grpc.example.com',
+      },
+    });
+    expect(line).toContain('grpc=true');
+    expect(line).toContain('grpc-service-name=svc');
+    expect(line).toContain('grpc-mode=multi');
+    expect(line).toContain('grpc-authority=grpc.example.com');
+  });
+
+  it('rejects invalid Surge VLESS flow combinations', () => {
+    const base: ProxyNode = {
+      name: 'V',
+      type: 'vless',
+      server: '1.2.3.4',
+      port: 443,
+      uuid: '11111111-2222-3333-4444-555555555555',
+      flow: 'xtls-rprx-vision',
+      tls: true,
+    };
+    expect(() => produceSurgeProxy({ ...base, network: 'ws' })).toThrow(
+      'requires VLESS encryption',
+    );
+    expect(() => produceSurgeProxy({ ...base, network: 'xhttp' })).toThrow(
+      'requires VLESS encryption',
+    );
+    expect(() =>
+      produceSurgeProxy({ ...base, network: 'ws', encryption: 'mlkem768x25519plus.native.0rtt' }),
+    ).not.toThrow();
+    expect(() =>
+      produceSurgeProxy({ ...base, network: 'grpc', 'grpc-opts': { 'grpc-service-name': 'svc' } }),
+    ).toThrow('over gRPC');
+    expect(() => produceSurgeProxy({ ...base, tls: false })).toThrow('requires TLS');
   });
 
   it('produces Mihomo YAML', () => {
@@ -453,6 +543,29 @@ describe('parseNodes', () => {
     });
   });
 
+  it('parses Surge VLESS XHTTP and gRPC parameters', () => {
+    const encryption = 'mlkem768x25519plus.native.0rtt.100-111-1111.AAAA';
+    const { nodes, warnings } = parseNodes(
+      [
+        `X = vless, example.com, 443, username=uuid, encryption=${encryption}, flow=xtls-rprx-vision, xhttp=true, xhttp-path="/path?a=1,2", xhttp-host=cdn.example.com, xhttp-mode=stream-one, xhttp-headers="User-Agent:UA", tls=true`,
+        'G = vless, 1.2.3.4, 443, username=uuid, grpc=true, grpc-service-name=svc, grpc-mode=multi, grpc-authority=grpc.example.com, tls=true',
+      ].join('\n'),
+    );
+    expect(warnings).toEqual([]);
+    expect(nodes[0]).toMatchObject({ type: 'vless', network: 'xhttp', encryption, tls: true });
+    expect(nodes[0]?.['xhttp-opts']).toMatchObject({
+      path: '/path?a=1,2',
+      host: 'cdn.example.com',
+      mode: 'stream-one',
+      headers: { 'User-Agent': 'UA' },
+    });
+    expect(nodes[1]?.['grpc-opts']).toMatchObject({
+      'grpc-service-name': 'svc',
+      'grpc-mode': 'multi',
+      'grpc-authority': 'grpc.example.com',
+    });
+  });
+
   it('reads proxy sections from client configs', () => {
     const surge = parseNodes(
       '[Proxy]\nHK = ss, 1.2.3.4, 8388, encrypt-method=aes-128-gcm, password=pass\n[Rule]\nFINAL,DIRECT',
@@ -507,6 +620,51 @@ describe('parseNodes', () => {
       expect(back?.['ws-opts']?.path).toBe('/a,b c');
       expect(back?.['ws-opts']?.headers?.Host).toBe('h"1');
     }
+  });
+
+  it('emits URI VLESS XHTTP with encryption', () => {
+    const encryption = 'mlkem768x25519plus.native.0rtt.100-111-1111.AAAA';
+    const { content, warnings } = produce(
+      [
+        {
+          name: 'X',
+          type: 'vless',
+          server: 'example.com',
+          port: 443,
+          uuid: '11111111-2222-3333-4444-555555555555',
+          tls: true,
+          encryption,
+          network: 'xhttp',
+          'xhttp-opts': { path: '/path?a=1,2', host: 'cdn.example.com', mode: 'stream-one' },
+        },
+      ],
+      'uri',
+    );
+    expect(warnings).toEqual([]);
+    expect(content).toContain('type=xhttp');
+    expect(content).toContain('mode=stream-one');
+    expect(content).toContain(`encryption=${encryption}`);
+    expect(content).not.toContain('encryption=none');
+  });
+
+  it('round-trips Surge VLESS XHTTP parameters', () => {
+    const encryption = 'mlkem768x25519plus.native.0rtt.100-111-1111.AAAA';
+    const { nodes } = parseNodes(
+      `X = vless, example.com, 443, username=uuid, encryption=${encryption}, flow=xtls-rprx-vision, xhttp=true, xhttp-path="/path?a=1,2", xhttp-host=cdn.example.com, xhttp-mode=stream-one, tls=true`,
+    );
+    const { content } = produce(nodes, 'surge');
+    const back = parseNodes(content).nodes[0];
+    expect(back).toMatchObject({
+      type: 'vless',
+      network: 'xhttp',
+      encryption,
+      flow: 'xtls-rprx-vision',
+    });
+    expect(back?.['xhttp-opts']).toMatchObject({
+      path: '/path?a=1,2',
+      host: 'cdn.example.com',
+      mode: 'stream-one',
+    });
   });
 
   it('round-trips the Surge, Loon and QX line formats', () => {

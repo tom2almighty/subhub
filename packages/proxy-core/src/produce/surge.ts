@@ -19,6 +19,15 @@ function append(base: string, params: Record<string, string | undefined>): strin
   return result;
 }
 
+function headerString(headers: Record<string, string> | undefined): string | undefined {
+  if (!headers) return undefined;
+  const pairs: string[] = [];
+  for (const [key, value] of Object.entries(headers)) {
+    if (typeof value === 'string' && value !== '') pairs.push(`${key}:${unquoteText(value)}`);
+  }
+  return pairs.length > 0 ? quoteText(pairs.join('|')) : undefined;
+}
+
 function wsParams(node: ProxyNode): Record<string, string | undefined> {
   const opts = node['ws-opts'];
   if (!node.network || node.network === 'tcp') return {};
@@ -38,10 +47,29 @@ function wsParams(node: ProxyNode): Record<string, string | undefined> {
 
 function grpcParams(node: ProxyNode): Record<string, string | undefined> {
   if (node.network !== 'grpc') return {};
-  const serviceName = node['grpc-opts']?.['grpc-service-name'];
+  const opts = node['grpc-opts'];
+  const serviceName = opts?.['grpc-service-name'];
+  const mode = opts?.['grpc-mode'];
+  const authority = opts?.['grpc-authority'];
   return {
     grpc: 'true',
     'grpc-service-name': serviceName ? quoteIfNeeded(serviceName) : undefined,
+    'grpc-mode': mode ? quoteIfNeeded(`${mode}`) : undefined,
+    'grpc-authority': authority ? quoteIfNeeded(`${authority}`) : undefined,
+  };
+}
+
+function xhttpParams(node: ProxyNode): Record<string, string | undefined> {
+  if (node.network !== 'xhttp') return {};
+  const opts = node['xhttp-opts'];
+  const rawHost = opts?.host ?? opts?.headers?.Host ?? opts?.headers?.host;
+  const host = Array.isArray(rawHost) ? rawHost[0] : rawHost;
+  return {
+    xhttp: 'true',
+    'xhttp-path': typeof opts?.path === 'string' ? quoteIfNeeded(opts.path) : undefined,
+    'xhttp-host': host ? quoteIfNeeded(`${host}`) : undefined,
+    'xhttp-mode': opts?.mode ? quoteIfNeeded(`${opts.mode}`) : undefined,
+    'xhttp-headers': headerString(opts?.headers),
   };
 }
 
@@ -116,23 +144,39 @@ function vless(node: ProxyNode): string {
   if (node.flow && !['xtls-rprx-vision', 'xtls-rprx-vision-udp443'].includes(node.flow)) {
     throw new Error(`Surge does not support VLESS flow ${node.flow}`);
   }
-  if (node.flow && node.network === 'ws') {
-    throw new Error('Surge does not support VLESS Vision over WebSocket');
+  if (node.flow && node.network === 'grpc') {
+    throw new Error('Surge does not support VLESS Vision over gRPC');
   }
-  if (node.flow && !node.tls) {
-    throw new Error('Surge VLESS Vision requires TLS or REALITY');
+  if (node.flow && !node.tls && !node.encryption) {
+    throw new Error('Surge VLESS Vision requires TLS, REALITY or VLESS encryption');
   }
-  if (node.network && !['tcp', 'ws', 'grpc'].includes(node.network)) {
+  if (node.flow && (node.network === 'ws' || node.network === 'xhttp') && !node.encryption) {
+    throw new Error('Surge VLESS Vision over WebSocket or XHTTP requires VLESS encryption');
+  }
+  if (node.encryption && /[,"'\r\n]/.test(node.encryption)) {
+    throw new Error('Surge VLESS encryption contains unsupported characters');
+  }
+  if (node.network && !['tcp', 'raw', 'none', 'ws', 'grpc', 'xhttp'].includes(node.network)) {
     throw new Error(`Surge does not support VLESS transport ${node.network}`);
   }
   if (node.network === 'grpc' && !node.tls && !node['reality-opts']) {
     throw new Error('Surge VLESS gRPC requires TLS or REALITY');
   }
+  if (node.network === 'ws' && node['reality-opts']) {
+    throw new Error('Surge does not support VLESS REALITY over WebSocket');
+  }
   const transport =
-    node.network === 'grpc' ? grpcParams(node) : node.network === 'ws' ? wsParams(node) : {};
+    node.network === 'grpc'
+      ? grpcParams(node)
+      : node.network === 'ws'
+        ? wsParams(node)
+        : node.network === 'xhttp'
+          ? xhttpParams(node)
+          : {};
   return append(base, {
     username: node.uuid ? quoteIfNeeded(node.uuid) : undefined,
     flow: node.flow || undefined,
+    encryption: node.encryption || undefined,
     ...transport,
     ...tlsParams(node),
   });
