@@ -130,12 +130,22 @@ function parseHeaderPairs(value: string | undefined): Record<string, string> {
 }
 
 function applySurgeTransport(node: ProxyNode, params: Params): void {
-  if (parseBool(params.ws) || params.transport === 'ws') {
+  const httpUpgrade = parseBool(params['ws-http-upgrade']);
+  if (
+    parseBool(params.ws) ||
+    httpUpgrade ||
+    params.transport === 'ws' ||
+    params.transport === 'httpupgrade'
+  ) {
     node.network = 'ws';
     const headers = parseHeaderPairs(params['ws-headers']);
     const host = params.host ?? params['ws-host'];
     if (host && !headers.Host) headers.Host = host;
-    node['ws-opts'] = { path: params['ws-path'] ?? params.path ?? '/', headers };
+    node['ws-opts'] = {
+      path: params['ws-path'] ?? params.path ?? '/',
+      headers,
+      ...(httpUpgrade || params.transport === 'httpupgrade' ? { 'v2ray-http-upgrade': true } : {}),
+    };
     return;
   }
   if (parseBool(params.grpc) || params.transport === 'grpc') {

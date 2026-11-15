@@ -183,6 +183,51 @@ describe('produce', () => {
     expect(line).toContain('ws-path=/ws');
     expect(line).toContain('ws-headers="Host:cdn.example.com"');
     expect(line).toContain('tls=true');
+    expect(line).not.toContain('ws-http-upgrade');
+  });
+
+  it('emits Surge ws-http-upgrade=true for VLESS, VMess and Trojan HTTPUpgrade', () => {
+    const vlessLine = produceSurgeProxy(
+      parseUri(
+        'vless://11111111-2222-3333-4444-555555555555@5.6.7.8:443?security=tls&sni=example.com&type=httpupgrade&path=%2Fup&host=cdn.example.com#VUP',
+      ),
+    );
+    expect(vlessLine).toContain('VUP=vless,5.6.7.8,443');
+    expect(vlessLine).toContain('ws=true');
+    expect(vlessLine).toContain('ws-path=/up');
+    expect(vlessLine).toContain('ws-headers="Host:cdn.example.com"');
+    expect(vlessLine).toContain('ws-http-upgrade=true');
+
+    const trojanLine = produceSurgeProxy(
+      parseUri(
+        'trojan://secret@example.com:443?security=tls&sni=example.com&type=httpupgrade&path=%2Fup&host=cdn.example.com#TUP',
+      ),
+    );
+    expect(trojanLine).toContain('TUP=trojan,example.com,443');
+    expect(trojanLine).toContain('ws=true');
+    expect(trojanLine).toContain('ws-path=/up');
+    expect(trojanLine).toContain('ws-headers="Host:cdn.example.com"');
+    expect(trojanLine).toContain('ws-http-upgrade=true');
+
+    const vmessLine = produceSurgeProxy({
+      name: 'MUP',
+      type: 'vmess',
+      server: 'vm.example.com',
+      port: 443,
+      uuid: '11111111-2222-3333-4444-555555555555',
+      tls: true,
+      network: 'ws',
+      'ws-opts': {
+        path: '/up',
+        headers: { Host: 'cdn.example.com' },
+        'v2ray-http-upgrade': true,
+      },
+    });
+    expect(vmessLine).toContain('MUP=vmess,vm.example.com,443');
+    expect(vmessLine).toContain('ws=true');
+    expect(vmessLine).toContain('ws-path=/up');
+    expect(vmessLine).toContain('ws-headers="Host:cdn.example.com"');
+    expect(vmessLine).toContain('ws-http-upgrade=true');
   });
 
   it('emits Surge VLESS XHTTP with encryption', () => {
@@ -673,6 +718,38 @@ describe('parseNodes', () => {
       host: 'cdn.example.com',
       mode: 'stream-one',
     });
+  });
+
+  it('round-trips Surge ws-http-upgrade across Surge, URI, Mihomo and sing-box', () => {
+    const { nodes, warnings } = parseNodes(
+      [
+        'V = vless, example.com, 443, username=11111111-2222-3333-4444-555555555555, ws=true, ws-path=/up, ws-headers="Host:cdn.example.com", ws-http-upgrade=true, tls=true',
+        'M = vmess, example.com, 443, username=11111111-2222-3333-4444-555555555555, ws=true, ws-path=/up, ws-headers="Host:cdn.example.com", ws-http-upgrade=true, tls=true',
+        'T = trojan, example.com, 443, password="secret", ws=true, ws-path=/up, ws-headers="Host:cdn.example.com", ws-http-upgrade=true, tls=true',
+      ].join('\n'),
+    );
+    expect(warnings).toEqual([]);
+    for (const node of nodes) {
+      expect(node.network).toBe('ws');
+      expect(node['ws-opts']).toMatchObject({
+        path: '/up',
+        headers: { Host: 'cdn.example.com' },
+        'v2ray-http-upgrade': true,
+      });
+    }
+
+    for (const target of ['surge', 'uri', 'mihomo', 'singbox'] as const) {
+      const { content, warnings: prodWarnings } = produce(nodes, target);
+      expect(prodWarnings).toEqual([]);
+      const reparsed = parseNodes(content);
+      expect(reparsed.warnings).toEqual([]);
+      expect(reparsed.nodes).toHaveLength(3);
+      for (const node of reparsed.nodes) {
+        expect(node.network).toBe('ws');
+        expect(node['ws-opts']?.['v2ray-http-upgrade']).toBe(true);
+        expect(node['ws-opts']?.path).toBe('/up');
+      }
+    }
   });
 
   it('round-trips the Surge, Loon and QX line formats', () => {

@@ -189,7 +189,7 @@ function applyTransport(
 ) {
   const net = network.toLowerCase();
   if (net === 'tcp' || net === 'raw' || net === '') return;
-  node.network = net;
+  node.network = net === 'httpupgrade' ? 'ws' : net;
   if (net === 'ws' || net === 'httpupgrade') {
     node['ws-opts'] = {
       path: options.path ?? '/',

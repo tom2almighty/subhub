@@ -28,21 +28,25 @@ function firstPath(
 }
 
 function transportQuery(node: ProxyNode): Record<string, string | undefined> {
-  const network = `${node.network ?? 'tcp'}`;
+  const rawNetwork = `${node.network ?? 'tcp'}`;
+  const isHttpUpgrade =
+    rawNetwork === 'httpupgrade' ||
+    (rawNetwork === 'ws' && Boolean(node['ws-opts']?.['v2ray-http-upgrade']));
+  const network = isHttpUpgrade ? 'httpupgrade' : rawNetwork;
   const params: Record<string, string | undefined> = { type: network };
-  if (network === 'ws') {
+  if (rawNetwork === 'ws' || rawNetwork === 'httpupgrade') {
     params.path = firstPath(node, 'ws-opts');
     params.host = node['ws-opts']?.headers?.Host;
-  } else if (network === 'grpc') {
+  } else if (rawNetwork === 'grpc') {
     params.serviceName = node['grpc-opts']?.['grpc-service-name'];
     params.mode = node['grpc-opts']?.['grpc-mode'];
-  } else if (network === 'xhttp') {
+  } else if (rawNetwork === 'xhttp') {
     const opts = node['xhttp-opts'];
     const host = opts?.host ?? opts?.headers?.Host;
     params.path = firstPath(node, 'xhttp-opts');
     params.host = Array.isArray(host) ? host[0] : host;
     params.mode = opts?.mode;
-  } else if (network === 'h2' || network === 'http') {
+  } else if (rawNetwork === 'h2' || rawNetwork === 'http') {
     params.path = firstPath(node, 'h2-opts') ?? firstPath(node, 'http-opts');
     const host = node['h2-opts']?.host ?? node['http-opts']?.headers?.Host;
     params.host = Array.isArray(host) ? host[0] : host;
@@ -84,6 +88,10 @@ function ssUri(node: ProxyNode): string {
 }
 
 function vmessUri(node: ProxyNode): string {
+  const rawNetwork = `${node.network ?? 'tcp'}`;
+  const isHttpUpgrade =
+    rawNetwork === 'httpupgrade' ||
+    (rawNetwork === 'ws' && Boolean(node['ws-opts']?.['v2ray-http-upgrade']));
   const payload: Record<string, unknown> = {
     v: '2',
     ps: node.name,
@@ -92,7 +100,7 @@ function vmessUri(node: ProxyNode): string {
     id: node.uuid ?? '',
     aid: node.alterId ?? 0,
     scy: node.cipher ?? 'auto',
-    net: node.network ?? 'tcp',
+    net: isHttpUpgrade ? 'httpupgrade' : rawNetwork,
     type: 'none',
     host: '',
     path: '',
@@ -101,13 +109,12 @@ function vmessUri(node: ProxyNode): string {
     alpn: '',
     fp: '',
   };
-  const network = `${node.network ?? 'tcp'}`;
-  if (network === 'ws') {
+  if (rawNetwork === 'ws' || rawNetwork === 'httpupgrade') {
     payload.path = firstPath(node, 'ws-opts') ?? '/';
     payload.host = node['ws-opts']?.headers?.Host ?? '';
-  } else if (network === 'grpc') {
+  } else if (rawNetwork === 'grpc') {
     payload.path = node['grpc-opts']?.['grpc-service-name'] ?? '';
-  } else if (network === 'h2' || network === 'http') {
+  } else if (rawNetwork === 'h2' || rawNetwork === 'http') {
     payload.path = firstPath(node, 'h2-opts') ?? firstPath(node, 'http-opts') ?? '/';
     const host = node['h2-opts']?.host ?? node['http-opts']?.headers?.Host;
     payload.host = Array.isArray(host) ? host.join(',') : (host ?? '');

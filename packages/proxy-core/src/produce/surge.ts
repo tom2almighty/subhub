@@ -28,20 +28,23 @@ function headerString(headers: Record<string, string> | undefined): string | und
   return pairs.length > 0 ? quoteText(pairs.join('|')) : undefined;
 }
 
+function isWsNetwork(network: string | undefined): boolean {
+  return network === 'ws' || network === 'httpupgrade';
+}
+
 function wsParams(node: ProxyNode): Record<string, string | undefined> {
   const opts = node['ws-opts'];
   if (!node.network || node.network === 'tcp') return {};
-  if (node.network !== 'ws') {
+  if (!isWsNetwork(node.network)) {
     throw new Error(`Surge does not support network ${node.network}`);
   }
-  if (opts?.['v2ray-http-upgrade']) {
-    throw new Error('Surge does not support WebSocket http-upgrade');
-  }
+  const httpUpgrade = node.network === 'httpupgrade' || Boolean(opts?.['v2ray-http-upgrade']);
   const host = opts?.headers?.Host;
   return {
     ws: 'true',
     'ws-path': typeof opts?.path === 'string' ? quoteIfNeeded(opts.path) : undefined,
     'ws-headers': host ? quoteText(`Host:${unquoteText(host)}`) : undefined,
+    'ws-http-upgrade': httpUpgrade ? 'true' : undefined,
   };
 }
 
@@ -141,6 +144,7 @@ function vmess(node: ProxyNode): string {
 
 function vless(node: ProxyNode): string {
   const base = `${sanitizeName(node.name)}=vless,${node.server},${node.port}`;
+  const isWs = isWsNetwork(node.network);
   if (node.flow && !['xtls-rprx-vision', 'xtls-rprx-vision-udp443'].includes(node.flow)) {
     throw new Error(`Surge does not support VLESS flow ${node.flow}`);
   }
@@ -150,25 +154,28 @@ function vless(node: ProxyNode): string {
   if (node.flow && !node.tls && !node.encryption) {
     throw new Error('Surge VLESS Vision requires TLS, REALITY or VLESS encryption');
   }
-  if (node.flow && (node.network === 'ws' || node.network === 'xhttp') && !node.encryption) {
+  if (node.flow && (isWs || node.network === 'xhttp') && !node.encryption) {
     throw new Error('Surge VLESS Vision over WebSocket or XHTTP requires VLESS encryption');
   }
   if (node.encryption && /[,"'\r\n]/.test(node.encryption)) {
     throw new Error('Surge VLESS encryption contains unsupported characters');
   }
-  if (node.network && !['tcp', 'raw', 'none', 'ws', 'grpc', 'xhttp'].includes(node.network)) {
+  if (
+    node.network &&
+    !['tcp', 'raw', 'none', 'ws', 'httpupgrade', 'grpc', 'xhttp'].includes(node.network)
+  ) {
     throw new Error(`Surge does not support VLESS transport ${node.network}`);
   }
   if (node.network === 'grpc' && !node.tls && !node['reality-opts']) {
     throw new Error('Surge VLESS gRPC requires TLS or REALITY');
   }
-  if (node.network === 'ws' && node['reality-opts']) {
+  if (isWs && node['reality-opts']) {
     throw new Error('Surge does not support VLESS REALITY over WebSocket');
   }
   const transport =
     node.network === 'grpc'
       ? grpcParams(node)
-      : node.network === 'ws'
+      : isWs
         ? wsParams(node)
         : node.network === 'xhttp'
           ? xhttpParams(node)
@@ -184,7 +191,7 @@ function vless(node: ProxyNode): string {
 
 function trojan(node: ProxyNode): string {
   const base = `${sanitizeName(node.name)}=trojan,${node.server},${node.port}`;
-  if (node.network && !['tcp', 'ws'].includes(node.network)) {
+  if (node.network && !['tcp', 'ws', 'httpupgrade'].includes(node.network)) {
     throw new Error(`Surge does not support Trojan transport ${node.network}`);
   }
   return append(base, {

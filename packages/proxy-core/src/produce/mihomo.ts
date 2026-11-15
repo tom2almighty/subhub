@@ -71,6 +71,15 @@ function normalizeForMihomo(node: ProxyNode): Dict {
     proxy.cipher = node.cipher || 'none';
   }
   if (proxy.network === 'tcp') delete proxy.network;
+  if (proxy.network === 'httpupgrade') {
+    proxy.network = 'ws';
+    proxy['ws-opts'] = {
+      ...(proxy['ws-opts'] && typeof proxy['ws-opts'] === 'object'
+        ? (proxy['ws-opts'] as Dict)
+        : {}),
+      'v2ray-http-upgrade': true,
+    };
+  }
   return proxy;
 }
 

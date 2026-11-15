@@ -35,10 +35,13 @@ function tls(node: ProxyNode): Dict | undefined {
 
 function transport(node: ProxyNode): Dict | undefined {
   if (!node.network || node.network === 'tcp') return undefined;
-  if (node.network === 'ws') {
+  if (node.network === 'ws' || node.network === 'httpupgrade') {
     const headers = node['ws-opts']?.headers;
     return {
-      type: node['ws-opts']?.['v2ray-http-upgrade'] ? 'httpupgrade' : 'ws',
+      type:
+        node.network === 'httpupgrade' || node['ws-opts']?.['v2ray-http-upgrade']
+          ? 'httpupgrade'
+          : 'ws',
       path: node['ws-opts']?.path,
       headers,
     };

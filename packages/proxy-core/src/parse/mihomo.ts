@@ -15,8 +15,9 @@ function normalizeName(value: unknown, fallback: string): string {
 }
 
 function normalizeTransport(node: ProxyNode, raw: Record<string, any>) {
-  const network = `${raw.network ?? ''}`.toLowerCase();
-  if (!network) return;
+  const rawNetwork = `${raw.network ?? ''}`.toLowerCase();
+  if (!rawNetwork) return;
+  const network = rawNetwork === 'httpupgrade' ? 'ws' : rawNetwork;
   node.network = network;
   if (network === 'ws') {
     const opts = isPlainObject(raw['ws-opts']) ? raw['ws-opts'] : {};
@@ -25,7 +26,8 @@ function normalizeTransport(node: ProxyNode, raw: Record<string, any>) {
       headers: isPlainObject(opts.headers) ? opts.headers : {},
       'max-early-data': opts['max-early-data'],
       'early-data-header-name': opts['early-data-header-name'],
-      'v2ray-http-upgrade': parseBool(opts['v2ray-http-upgrade']),
+      'v2ray-http-upgrade':
+        rawNetwork === 'httpupgrade' ? true : parseBool(opts['v2ray-http-upgrade']),
     };
   } else if (network === 'grpc') {
     const opts = isPlainObject(raw['grpc-opts']) ? raw['grpc-opts'] : {};
@@ -172,7 +174,7 @@ function singboxTransport(node: ProxyNode, transport: unknown) {
   if (!isPlainObject(transport)) return;
   const type = `${transport.type ?? ''}`.toLowerCase();
   if (!type) return;
-  node.network = type === 'http' ? 'http' : type;
+  node.network = type === 'http' ? 'http' : type === 'httpupgrade' ? 'ws' : type;
   if (type === 'ws') {
     node['ws-opts'] = {
       path: `${transport.path ?? '/'}`,
